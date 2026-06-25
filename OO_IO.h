@@ -46,7 +46,6 @@
 #include <vector>  // std::vector
 #include <unistd.h> // close()
 #include <sys/stat.h> // fstat()
-#include <mutex> // Added for std::once_flag and std::call_once
 
 
 /* Helper function declarations.
@@ -576,8 +575,7 @@ template <class ItemType> class ThreadsIO : public OO_IO_Base<ItemType> {
     virtual ~ThreadsIO();
 
   protected:
-    inline static int fileDescriptor = -1; 
-    inline static std::once_flag initFlag;
+    int fileDescriptor = -1; // shared POSIX descriptor (read-only)
 };
 
 /* ThreadsIO constructor
@@ -599,35 +597,37 @@ template <class ItemType>
 ThreadsIO<ItemType>::ThreadsIO(const std::string& fileName, int id,
                                int num_threads, int openMode)
     : OO_IO_Base<ItemType>(fileName, id, num_threads) {
-    
-    // std::call_once guarantees the lambda runs EXACTLY once.
-    // If Thread 1 is executing it, Threads 2-12 will automatically sleep here.
-    std::call_once(initFlag, [&]() {
-        // 0644 parameter are the file permissions used only when O_CREAT is in openMode
-        fileDescriptor = open(fileName.c_str(), openMode, 0644);
+    //  Open the file once, on the constructing thread, with the caller-
+    //  supplied mode.  The returned descriptor will be shared by every
+    //  worker;
+    //  0644 parameter are the file permissions used only when O_CREAT is in
+    //  openMode
+    fileDescriptor = open(fileName.c_str(), openMode, 0644);
 
-        if (fileDescriptor == -1) {
-            perror("open");
-            exit(EXIT_FAILURE);
-        }
+    if (fileDescriptor == -1) {
+        perror("open");
+        exit(EXIT_FAILURE);
+    }
 
-        struct stat fileInfo;
-        if (fstat(fileDescriptor, &fileInfo) == -1) {
-            perror("fstat");
-            exit(EXIT_FAILURE);
-        }
+    // Check the open descriptor's metadata for the file's size in bytes.
+    struct stat fileInfo;
+    // Without the file size we cannot partition the file across the worker
+    //  threads; on failure, report the OS error and abort.
+    if (fstat(fileDescriptor, &fileInfo) == -1) {
+        perror("fstat");
+        exit(EXIT_FAILURE);
+    }
 
-        // Get file size in bytes for ThreadReader
-        long fileSize = fileInfo.st_size;
-        OO_IO_Base<ItemType>::setFileSize(fileSize);
+    // Get file size in bytes for ThreadReader
+    long fileSize = fileInfo.st_size;
 
-        // Compute number of items in file
-        OO_IO_Base<ItemType>::setNumItemsInFile(
-            fileSize / OO_IO_Base<ItemType>::getItemSize()
-        );
-    });
+    OO_IO_Base<ItemType>::setFileSize(fileSize);
 
-    // All threads set this to true once the barrier above is cleared
+    // Compute number of items in file
+    OO_IO_Base<
+        ItemType>::setNumItemsInFile(fileSize /
+                                     OO_IO_Base<ItemType>::getItemSize());
+
     OO_IO_Base<ItemType>::setFileOpened(true);
 }
 
