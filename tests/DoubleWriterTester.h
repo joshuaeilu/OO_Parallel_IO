@@ -90,7 +90,6 @@ runWriteTests(WriterType& writer) {
    assert( writer.getFileSize() == 48 );         // 8 x 6
    assert( writer.getNumItemsInFile() == 6 );
 
-writer.writeChunk(v1);
 
 #pragma omp barrier
 

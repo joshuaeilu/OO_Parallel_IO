@@ -1,3 +1,12 @@
+/* threadReaderTester.cpp provides basic tests for the ThreadReader template.
+ *
+ * Joel C. Adams, Calvin University, Fall 2023.
+ *
+ * Usage
+ * Build: mpic++ -fopenmp threadReaderTester.cpp -o threadReaderTester
+ * Run: ./threadReaderTester
+ *         change number of threads in the main function where INT NUM_THREADS = 5; 
+ */
 #include "DoubleReaderTester.h"
 #include "IntReaderTester.h"
 #include "CharReaderTester.h"
@@ -66,7 +75,7 @@ void cppTests(int id, int numThreads)
 
 int main()
 {
-    const int NUM_THREADS = 5;
+    const int NUM_THREADS = 5;  
 
     std::cout << "\n====================================\n";
     std::cout << "OPENMP TESTS\n";

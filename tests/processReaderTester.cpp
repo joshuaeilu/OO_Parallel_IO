@@ -1,16 +1,10 @@
-/* readerTester.cpp provides basic tests for the ParallelReader template.
+/* processReaderTester.cpp provides basic tests for the MPIProcessReader template.
  *
  * Joel C. Adams, Calvin University, Fall 2023.
  *
- * Usage: mpirun -np <P> ./readerTester
- *         where P = 1, 2, or 3.
- */
-
-/* readerTester.cpp provides basic tests for the ParallelReader template.
- *
- * Joel C. Adams, Calvin University, Fall 2023.
- *
- * Usage: mpirun -np <P> ./readerTester
+ * Usage
+ * Build: mpic++ processReaderTester.cpp -o processReaderTester
+ * Run: mpirun -np <P> ./processReaderTester
  *         where P = 1, 2, or 3.
  */
 

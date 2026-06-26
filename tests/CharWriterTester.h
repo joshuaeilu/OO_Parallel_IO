@@ -52,7 +52,7 @@ void CharWriterTester::runFileTests(const WriterType& writer) {
 
    assert( writer.getID() == id );
    assert( writer.getNumPEs() == numProcs );
-   assert( writer.getFileName() == "./files/6chars.bin" );
+   assert( writer.getFileName() == "./files/6chars_output.bin" );
    assert( writer.getItemSize() == 1 );          // 1 byte in a char
 
    if (id == MASTER) cout << " Passed! " << endl;
@@ -80,7 +80,7 @@ void CharWriterTester::runWriteTests(WriterType& writer) {
    #pragma omp barrier
 
   ThreadReader<char> tReader(
-    "./files/6chars.bin",
+    "./files/6chars_output.bin",
     id,
     numProcs);
    vector<char> v2 = tReader.readChunk();
