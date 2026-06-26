@@ -36,27 +36,26 @@
 #ifndef OO_IO
 #define OO_IO
 
-#include <climits> // INT_MAX
-#include <cstdio>  // fprintf(), perror(), stderr
-#include <cstdlib> // exit(), EXIT_FAILURE
-#include <fcntl.h> // open(), O_RDONLY
-#include <mpi.h>   // C MPI
-#include <omp.h>   // OpenMP
-#include <string>  // std::string
-#include <vector>  // std::vector
-#include <unistd.h> // close()
+#include <climits>    // INT_MAX
+#include <cstdio>     // fprintf(), perror(), stderr
+#include <cstdlib>    // exit(), EXIT_FAILURE
+#include <fcntl.h>    // open(), O_RDONLY
+#include <mpi.h>      // C MPI
+#include <omp.h>      // OpenMP
+#include <string>     // std::string
+#include <vector>     // std::vector
+#include <unistd.h>   // close()
 #include <sys/stat.h> // fstat()
-#include <mutex> // Added for std::once_flag and std::call_once
-
 
 /* Helper function declarations.
  * The definitions appear later in this file.
  * 'inline' prevents multiple-definition errors when included in multiple files.
  */
-template <typename T> inline MPI_Datatype mpiType();
+template <typename T>
+inline MPI_Datatype mpiType();
 inline void checkResult(int result);
 inline void getChunkStartStopValues(int id, int numPEs, const unsigned REPS,
-                                    long& start, long& stop);
+                                    long &start, long &stop);
 
 /********************************************************************
  * OO_IO_Base is a templated base class that supports parallel binary I/O
@@ -67,9 +66,11 @@ inline void getChunkStartStopValues(int id, int numPEs, const unsigned REPS,
  * Its subclasses are ProcessesIO (MPI) and ThreadsIO (POSIX threads).
  ********************************************************************/
 
-template <class ItemType> class OO_IO_Base {
-  public:
-    OO_IO_Base(const std::string& fileName, int id, int numPEs,
+template <class ItemType>
+class OO_IO_Base
+{
+public:
+    OO_IO_Base(const std::string &fileName, int id, int numPEs,
                MPI_Datatype mpiType = MPI_DATATYPE_NULL);
     virtual ~OO_IO_Base();
 
@@ -77,7 +78,7 @@ template <class ItemType> class OO_IO_Base {
     int getNumPEs() const { return myNumPEs; }
     long getItemSize() const { return myItemSize; }
     std::string getFileName() const { return myFileName; }
-    MPI_File& getFileHandle() { return myFileHandle; }
+    MPI_File &getFileHandle() { return myFileHandle; }
     MPI_Datatype getMPIType() const { return myMPIType; }
     long getNumItemsInFile() const { return myNumItemsInFile; }
     long getChunkSize() const { return myChunkSize; }
@@ -87,25 +88,27 @@ template <class ItemType> class OO_IO_Base {
     bool getFileOpened() const { return didFileOpen; }
     bool getUsesMPI() const { return usesMPI; }
 
-
-  protected:
+protected:
     void setID(int newID);
     void setNumPEs(int newNumPEs);
-    void setNumItemsInFile(long numItemsInFile) {
+    void setNumItemsInFile(long numItemsInFile)
+    {
         myNumItemsInFile = numItemsInFile;
     }
     void setFileSize(MPI_Offset fileSize) { myFileSize = fileSize; }
     void setChunkSize(long chunkSize) { myChunkSize = chunkSize; }
-    void setFirstItemOffset(long firstItemOffset) {
+    void setFirstItemOffset(long firstItemOffset)
+    {
         myFirstItemOffset = firstItemOffset;
     }
-    void setFirstByteOffset(long firstByteOffset) {
+    void setFirstByteOffset(long firstByteOffset)
+    {
         myFirstByteOffset = firstByteOffset;
     }
     void setFileOpened(bool opened) { didFileOpen = opened; }
     void setUsesMPI(bool value) { usesMPI = value; }
 
-  private:
+private:
     int myID;               // this PE's thread id or MPI rank
     int myNumPEs;           // number of threads or MPI processes
     int myItemSize;         // size of 1 Item, in bytes
@@ -138,21 +141,28 @@ template <class ItemType> class OO_IO_Base {
  *           &&  the per-chunk fields are set to defaults until a read/write.
  */
 template <class ItemType>
-OO_IO_Base<ItemType>::OO_IO_Base(const std::string& fileName, int id,
-                                 int numPEs, MPI_Datatype mpiType) {
+OO_IO_Base<ItemType>::OO_IO_Base(const std::string &fileName, int id,
+                                 int numPEs, MPI_Datatype mpiType)
+{
     myFileName = fileName;
     myMPIType = mpiType;
     myItemSize = sizeof(ItemType);
     usesMPI = false;
-    if (id >= 0) {
+    if (id >= 0)
+    {
         myID = id;
-    } else {
+    }
+    else
+    {
         fprintf(stderr, "\nOO_IO_Base(): id must be non-negative\n\n");
         exit(1);
     }
-    if (numPEs > 0) {
+    if (numPEs > 0)
+    {
         myNumPEs = numPEs;
-    } else {
+    }
+    else
+    {
         fprintf(stderr, "\nOO_IO_Base(): numPEs must be positive\n\n");
         exit(1);
     }
@@ -168,16 +178,22 @@ OO_IO_Base<ItemType>::OO_IO_Base(const std::string& fileName, int id,
 
 /* parameter-checking setter methods for id, numPEs
  */
-template <class ItemType> void OO_IO_Base<ItemType>::setID(int newID) {
-    if (newID < 0) {
+template <class ItemType>
+void OO_IO_Base<ItemType>::setID(int newID)
+{
+    if (newID < 0)
+    {
         fprintf(stderr, "\nOO_IO_Base::setID(): bad id (%d)\n\n", newID);
         exit(1);
     }
     myID = newID;
 }
 
-template <class ItemType> void OO_IO_Base<ItemType>::setNumPEs(int newNumPEs) {
-    if (newNumPEs < 0) {
+template <class ItemType>
+void OO_IO_Base<ItemType>::setNumPEs(int newNumPEs)
+{
+    if (newNumPEs < 0)
+    {
         fprintf(stderr, "\nOO_IO_Base::setNumPEs(): bad numPEs (%d)\n\n",
                 newNumPEs);
         exit(1);
@@ -192,13 +208,17 @@ template <class ItemType> void OO_IO_Base<ItemType>::setNumPEs(int newNumPEs) {
  *          ~ThreadsIO(), so usesMPI gates the MPI close here to prevent
  *          errors when a ThreadReader is used i.e. (MPI is not initialized).
  */
-template <class ItemType> OO_IO_Base<ItemType>::~OO_IO_Base() {
+template <class ItemType>
+OO_IO_Base<ItemType>::~OO_IO_Base()
+{
     // Only attempt close if we successfully opened the file earlier and we are
     // using MPI-IO.
-    if (didFileOpen && usesMPI) {
+    if (didFileOpen && usesMPI)
+    {
         int finalized = 0;
         MPI_Finalized(&finalized); // ask MPI whether Finalize has already run
-        if (!finalized) {
+        if (!finalized)
+        {
             // Safe to close the MPI file handle while MPI is still active.
             int result = MPI_File_close(&myFileHandle);
             checkResult(result);
@@ -215,13 +235,16 @@ template <class ItemType> OO_IO_Base<ItemType>::~OO_IO_Base() {
  *  library manage MPI's lifetime without the user calling MPI_Init()
  *  or MPI_Finalize() explicitly.
  * -------------------------------------------------------------------- */
-class MPI_Runtime {
-  public:
-    MPI_Runtime() {
+class MPI_Runtime
+{
+public:
+    MPI_Runtime()
+    {
         int initialized = 0;
         MPI_Initialized(&initialized);
 
-        if (!initialized) {
+        if (!initialized)
+        {
             // MPI Initialization
             MPI_Init(nullptr, nullptr);
             initializedMPI = true;
@@ -231,14 +254,16 @@ class MPI_Runtime {
         MPI_Comm_size(MPI_COMM_WORLD, &numPEs);
     }
 
-    ~MPI_Runtime() {
+    ~MPI_Runtime()
+    {
         int finalized = 0;
         MPI_Finalized(&finalized);
 
         // Only finalize MPI if:
         // 1. We initialized it, AND
         // 2. It has not already been finalized.
-        if (initializedMPI && !finalized) {
+        if (initializedMPI && !finalized)
+        {
             // MPI Finalization
             MPI_Finalize();
         }
@@ -247,7 +272,7 @@ class MPI_Runtime {
     int getRank() const { return myRank; }
     int getNumPEs() const { return numPEs; }
 
-  private:
+private:
     bool initializedMPI = false; // tracks whether this object initialized MPI.
     int myRank = 0;              // this process's MPI rank.
     int numPEs = 1;              // total number of MPI processes.
@@ -257,7 +282,8 @@ class MPI_Runtime {
  *   Ensure a single process-wide MPI runtime (init/finalize).
  *   Call mpiRuntime() before any MPI calls.
  */
-inline MPI_Runtime& mpiRuntime() {
+inline MPI_Runtime &mpiRuntime()
+{
     static MPI_Runtime instance;
     return instance;
 }
@@ -268,9 +294,11 @@ inline MPI_Runtime& mpiRuntime() {
  * It's subclasses are MPIProcessReader and MPIProcessWriter.
  ********************************************************************/
 
-template <class ItemType> class ProcessesIO : public OO_IO_Base<ItemType> {
-  public:
-    ProcessesIO(const std::string& fileName, int mpiMode);
+template <class ItemType>
+class ProcessesIO : public OO_IO_Base<ItemType>
+{
+public:
+    ProcessesIO(const std::string &fileName, int mpiMode);
     virtual ~ProcessesIO() = default;
 };
 
@@ -288,9 +316,10 @@ template <class ItemType> class ProcessesIO : public OO_IO_Base<ItemType> {
  *       caller does not pass them.
  */
 template <class ItemType>
-ProcessesIO<ItemType>::ProcessesIO(const std::string& fileName, int mpiMode)
+ProcessesIO<ItemType>::ProcessesIO(const std::string &fileName, int mpiMode)
     : OO_IO_Base<ItemType>(fileName, mpiRuntime().getRank(),
-                           mpiRuntime().getNumPEs(), mpiType<ItemType>()) {
+                           mpiRuntime().getNumPEs(), mpiType<ItemType>())
+{
 
     OO_IO_Base<ItemType>::setUsesMPI(true);
 
@@ -307,10 +336,12 @@ ProcessesIO<ItemType>::ProcessesIO(const std::string& fileName, int mpiMode)
  *
  * It uses ProcessesIO as its superclass.
  ********************************************************************/
-template <class ItemType> class MPIProcessReader
-    : public ProcessesIO<ItemType> {
-  public:
-    MPIProcessReader(const std::string& fileName);
+template <class ItemType>
+class MPIProcessReader
+    : public ProcessesIO<ItemType>
+{
+public:
+    MPIProcessReader(const std::string &fileName);
     std::vector<ItemType> readChunk();
     std::vector<ItemType> readChunkPlus(unsigned numExtras);
     virtual ~MPIProcessReader() = default;
@@ -324,9 +355,8 @@ template <class ItemType> class MPIProcessReader
  *                as appropriate for this PE using the file's info.
  */
 template <class ItemType>
-MPIProcessReader<ItemType>::MPIProcessReader(const std::string& fileName)
+MPIProcessReader<ItemType>::MPIProcessReader(const std::string &fileName)
     : ProcessesIO<ItemType>(fileName, MPI_MODE_RDONLY) {}
-
 
 /* method to read a chunk from the file (in its entirety).
  * Return: a vector containing the values of this PE's chunk.
@@ -334,7 +364,8 @@ MPIProcessReader<ItemType>::MPIProcessReader(const std::string& fileName)
  *        uses contiguous memory and provides a move-constructor.
  */
 template <class ItemType>
-std::vector<ItemType> MPIProcessReader<ItemType>::readChunk() {
+std::vector<ItemType> MPIProcessReader<ItemType>::readChunk()
+{
     // Note: We could compute the following attributes in the constructor,
     //  but do them here for symmetry with MPIProcessWriter
     MPI_Offset fileSize;
@@ -367,7 +398,8 @@ std::vector<ItemType> MPIProcessReader<ItemType>::readChunk() {
     std::vector<ItemType> v(itemsToRead);
     int readResult = 0;
     // handle very large files where chunkSize > INT_MAX
-    while (itemsToRead > INT_MAX) {
+    while (itemsToRead > INT_MAX)
+    {
         readResult =
             MPI_File_read_at(OO_IO_Base<ItemType>::getFileHandle(),
                              OO_IO_Base<ItemType>::getFirstByteOffset() +
@@ -406,8 +438,10 @@ std::vector<ItemType> MPIProcessReader<ItemType>::readChunk() {
  *        but defining each separately lets us more clearly explain
  *        the difference between the two versions.
  */
-template <class ItemType> std::vector<ItemType>
-MPIProcessReader<ItemType>::readChunkPlus(unsigned numExtras) {
+template <class ItemType>
+std::vector<ItemType>
+MPIProcessReader<ItemType>::readChunkPlus(unsigned numExtras)
+{
     // Note: We could compute the following attributes in the constructor,
     //  but do them here for symmetry with MPIProcessWriter
     MPI_Offset fileSize;
@@ -428,10 +462,12 @@ MPIProcessReader<ItemType>::readChunkPlus(unsigned numExtras) {
     int id = OO_IO_Base<ItemType>::getID();
     int numPEs = OO_IO_Base<ItemType>::getNumPEs();
     getChunkStartStopValues(id, numPEs, numItemsInFile, start, stop);
-    if (id < numPEs - 1) {
+    if (id < numPEs - 1)
+    {
         stop += numExtras;
     }
-    if (stop > numItemsInFile) {
+    if (stop > numItemsInFile)
+    {
         stop = numItemsInFile;
     }
     OO_IO_Base<ItemType>::setChunkSize(stop - start);
@@ -446,7 +482,8 @@ MPIProcessReader<ItemType>::readChunkPlus(unsigned numExtras) {
     std::vector<ItemType> v(itemsToRead);
     int readResult = 0;
     // handle very large files where chunkSize > INT_MAX
-    while (itemsToRead > INT_MAX) {
+    while (itemsToRead > INT_MAX)
+    {
         readResult =
             MPI_File_read_at(OO_IO_Base<ItemType>::getFileHandle(),
                              OO_IO_Base<ItemType>::getFirstByteOffset() +
@@ -476,11 +513,13 @@ MPIProcessReader<ItemType>::readChunkPlus(unsigned numExtras) {
  * It uses ProcessesIO as its superclass.
  ******************************************************************/
 
-template <class ItemType> class MPIProcessWriter
-    : public ProcessesIO<ItemType> {
-  public:
-    MPIProcessWriter(const std::string& fileName);
-    void writeChunk(const std::vector<ItemType>& v);
+template <class ItemType>
+class MPIProcessWriter
+    : public ProcessesIO<ItemType>
+{
+public:
+    MPIProcessWriter(const std::string &fileName);
+    void writeChunk(const std::vector<ItemType> &v);
 
     virtual ~MPIProcessWriter() = default;
 };
@@ -496,9 +535,8 @@ template <class ItemType> class MPIProcessWriter
  *                  and size info from the file.
  */
 template <class ItemType>
-MPIProcessWriter<ItemType>::MPIProcessWriter(const std::string& fileName)
+MPIProcessWriter<ItemType>::MPIProcessWriter(const std::string &fileName)
     : ProcessesIO<ItemType>(fileName, MPI_MODE_CREATE | MPI_MODE_WRONLY) {}
-
 
 /* method to write this PE's chunk to the file
  * @param: v, a vector of Items.
@@ -511,7 +549,8 @@ MPIProcessWriter<ItemType>::MPIProcessWriter(const std::string& fileName)
  *       Could instead pass it as a parameter to the constructor...
  */
 template <class ItemType>
-void MPIProcessWriter<ItemType>::writeChunk(const std::vector<ItemType>& v) {
+void MPIProcessWriter<ItemType>::writeChunk(const std::vector<ItemType> &v)
+{
     MPI_File_set_size(OO_IO_Base<ItemType>::getFileHandle(), 0); // truncate
 
     long chunkSize = v.size();
@@ -536,7 +575,8 @@ void MPIProcessWriter<ItemType>::writeChunk(const std::vector<ItemType>& v) {
     unsigned long itemsWritten = 0;
     unsigned long itemsToWrite = chunkSize;
     int writeResult = 0;
-    while (itemsToWrite > INT_MAX) {
+    while (itemsToWrite > INT_MAX)
+    {
         writeResult =
             MPI_File_write_at(OO_IO_Base<ItemType>::getFileHandle(),
                               OO_IO_Base<ItemType>::getFirstByteOffset() +
@@ -568,16 +608,17 @@ void MPIProcessWriter<ItemType>::writeChunk(const std::vector<ItemType>& v) {
  *
  ********************************************************************/
 
-template <class ItemType> class ThreadsIO : public OO_IO_Base<ItemType> {
-  public:
-    ThreadsIO(const std::string& fileName, int id, int num_threads,
+template <class ItemType>
+class ThreadsIO : public OO_IO_Base<ItemType>
+{
+public:
+    ThreadsIO(const std::string &fileName, int id, int num_threads,
               int openMode);
 
     virtual ~ThreadsIO();
 
   protected:
-    inline static int fileDescriptor = -1; 
-    inline static std::once_flag initFlag;
+    int fileDescriptor = -1; 
 };
 
 /* ThreadsIO constructor
@@ -596,26 +637,29 @@ template <class ItemType> class ThreadsIO : public OO_IO_Base<ItemType> {
  * have been recorded, and fileDescriptor is valid.
  */
 template <class ItemType>
-ThreadsIO<ItemType>::ThreadsIO(const std::string& fileName, int id,
+ThreadsIO<ItemType>::ThreadsIO(const std::string &fileName, int id,
                                int num_threads, int openMode)
     : OO_IO_Base<ItemType>(fileName, id, num_threads) {
-    
-    // std::call_once guarantees the lambda runs EXACTLY once.
-    // If Thread 1 is executing it, Threads 2-12 will automatically sleep here.
-    std::call_once(initFlag, [&]() {
-        // 0644 parameter are the file permissions used only when O_CREAT is in openMode
-        fileDescriptor = open(fileName.c_str(), openMode, 0644);
+    //  Open the file once, on the constructing thread, with the caller-
+    //  supplied mode.  The returned descriptor will be shared by every
+    //  worker;
+    //  0644 parameter are the file permissions used only when O_CREAT is in
+    //  openMode
+    fileDescriptor = open(fileName.c_str(), openMode, 0644);
 
-        if (fileDescriptor == -1) {
-            perror("open");
-            exit(EXIT_FAILURE);
-        }
+    if (fileDescriptor == -1) {
+        perror("open");
+        exit(EXIT_FAILURE);
+    }
 
-        struct stat fileInfo;
-        if (fstat(fileDescriptor, &fileInfo) == -1) {
-            perror("fstat");
-            exit(EXIT_FAILURE);
-        }
+    // Check the open descriptor's metadata for the file's size in bytes.
+    struct stat fileInfo;
+    // Without the file size we cannot partition the file across the worker
+    //  threads; on failure, report the OS error and abort.
+    if (fstat(fileDescriptor, &fileInfo) == -1) {
+        perror("fstat");
+        exit(EXIT_FAILURE);
+    }
 
         // Get file size in bytes for ThreadReader
         long fileSize = fileInfo.st_size;
@@ -625,15 +669,18 @@ ThreadsIO<ItemType>::ThreadsIO(const std::string& fileName, int id,
         OO_IO_Base<ItemType>::setNumItemsInFile(
             fileSize / OO_IO_Base<ItemType>::getItemSize()
         );
-    });
+    
 
     // All threads set this to true once the barrier above is cleared
     OO_IO_Base<ItemType>::setFileOpened(true);
 }
 
 /* ThreadsIO destructor: closes the shared descriptor if it is open. */
-template <class ItemType> ThreadsIO<ItemType>::~ThreadsIO() {
-    if (fileDescriptor != -1) {
+template <class ItemType>
+ThreadsIO<ItemType>::~ThreadsIO()
+{
+    if (fileDescriptor != -1)
+    {
         close(fileDescriptor);
     }
 }
@@ -647,16 +694,18 @@ template <class ItemType> ThreadsIO<ItemType>::~ThreadsIO() {
  *  so is safe to call concurrently on one shared descriptor.  This is what
  *  makes the thread backends data-race-free.
  ********************************************************************/
-template <class ItemType> class ThreadReader : public ThreadsIO<ItemType> {
-  public:
-    ThreadReader(const std::string& fileName, int id, int num_threads);
+template <class ItemType>
+class ThreadReader : public ThreadsIO<ItemType>
+{
+public:
+    ThreadReader(const std::string &fileName, int id, int num_threads);
     std::vector<ItemType> readChunk();
     std::vector<ItemType> readChunkPlus(unsigned numExtras);
 };
 
 /* ThreadReader constructor: see ThreadsIO Constructor. */
 template <class ItemType>
-ThreadReader<ItemType>::ThreadReader(const std::string& fileName, int id,
+ThreadReader<ItemType>::ThreadReader(const std::string &fileName, int id,
                                      int num_threads)
     : ThreadsIO<ItemType>(fileName, id, num_threads, O_RDONLY) {}
 
@@ -664,7 +713,8 @@ ThreadReader<ItemType>::ThreadReader(const std::string& fileName, int id,
  * Return: a vector containing the values of this PE's chunk.
  */
 template <class ItemType>
-std::vector<ItemType> ThreadReader<ItemType>::readChunk() {
+std::vector<ItemType> ThreadReader<ItemType>::readChunk()
+{
     long start = 0, stop = 0;
 
     getChunkStartStopValues(OO_IO_Base<ItemType>::getID(),
@@ -692,14 +742,16 @@ std::vector<ItemType> ThreadReader<ItemType>::readChunk() {
     ssize_t bytesRead = pread(ThreadsIO<ItemType>::fileDescriptor, chunk.data(),
                               expectedBytes, byteOffset);
 
-    if (bytesRead == -1) {
+    if (bytesRead == -1)
+    {
         perror("pread");
         exit(EXIT_FAILURE);
     }
 
     //  A short or failed read means the chunk is incomplete; report the size
     //  mismatch and abort.
-    if (bytesRead != static_cast<ssize_t>(expectedBytes)) {
+    if (bytesRead != static_cast<ssize_t>(expectedBytes))
+    {
         fprintf(stderr, "Thread %d: expected %zu bytes, got %zd bytes\n",
                 OO_IO_Base<ItemType>::getID(), expectedBytes, bytesRead);
         exit(EXIT_FAILURE);
@@ -724,8 +776,10 @@ std::vector<ItemType> ThreadReader<ItemType>::readChunk() {
  *        but defining each separately lets us more clearly explain
  *        the difference between the two versions.
  */
-template <class ItemType> std::vector<ItemType>
-ThreadReader<ItemType>::readChunkPlus(unsigned numExtras) {
+template <class ItemType>
+std::vector<ItemType>
+ThreadReader<ItemType>::readChunkPlus(unsigned numExtras)
+{
     // Note: the file's size and item count were already recorded by the
     //  ThreadsIO constructor (via fstat), so unlike the MPI version we
     //  do not re-stat the file here.
@@ -738,10 +792,12 @@ ThreadReader<ItemType>::readChunkPlus(unsigned numExtras) {
 
     // Extend this thread's chunk by numExtras Items, except for the last
     //  thread, then clamp so we never read past the end of the file.
-    if (id < numPEs - 1) {
+    if (id < numPEs - 1)
+    {
         stop += numExtras;
     }
-    if (stop > numItemsInFile) {
+    if (stop > numItemsInFile)
+    {
         stop = numItemsInFile;
     }
 
@@ -764,14 +820,16 @@ ThreadReader<ItemType>::readChunkPlus(unsigned numExtras) {
     ssize_t bytesRead = pread(ThreadsIO<ItemType>::fileDescriptor, chunk.data(),
                               expectedBytes, byteOffset);
 
-    if (bytesRead == -1) {
+    if (bytesRead == -1)
+    {
         perror("pread");
         exit(EXIT_FAILURE);
     }
 
     // A short or failed read means the chunk is incomplete; report the
     //  size mismatch and abort.
-    if (bytesRead != static_cast<ssize_t>(expectedBytes)) {
+    if (bytesRead != static_cast<ssize_t>(expectedBytes))
+    {
         fprintf(stderr, "Thread %d: expected %zu bytes, got %zd bytes\n",
                 OO_IO_Base<ItemType>::getID(), expectedBytes, bytesRead);
         exit(EXIT_FAILURE);
@@ -779,7 +837,6 @@ ThreadReader<ItemType>::readChunkPlus(unsigned numExtras) {
 
     return chunk;
 }
-
 
 /********************************************************************
  * ThreadWriter writes binary data to a file in parallel using
@@ -791,23 +848,32 @@ ThreadReader<ItemType>::readChunkPlus(unsigned numExtras) {
  * It uses ThreadsIO as its superclass.
  ********************************************************************/
 
-template <class ItemType> class ThreadWriter : public ThreadsIO<ItemType> {
-  public:
-    ThreadWriter(const std::string& fileName, int id, int num_threads);
-    void writeChunk(const std::vector<ItemType>& v);
-
-  private:
-    static std::vector<size_t> threadSizes; // *** ADDED
+template <class ItemType>
+class ThreadWriter : public ThreadsIO<ItemType>
+{
+public:
+    ThreadWriter(const std::string &fileName, int id, int num_threads, long fileSize);
+    void writeChunk(const std::vector<ItemType> &v);
 };
 
+/* ThreadWriter constructor
+ * @param: fileName, a string
+ * @param: id, an int
+ * @param: numThreads, an int
+ * @param: fileSize, an int
+ * Precondition : fileName is the name of the file containing binary-format
+ * values of type ItemType.
+ *          &&  id is the thread id
+ *          &&  numThreads is the number of threads
+ *          &&  fileSize is the size of the file read in bytes
+ */
 template <class ItemType>
-std::vector<size_t> ThreadWriter<ItemType>::threadSizes;
-
-/* ThreadWriter constructor: see ThreadsIO. */
-template <class ItemType>
-ThreadWriter<ItemType>::ThreadWriter(const std::string& fileName, int id,
-                                     int num_threads)
-    : ThreadsIO<ItemType>(fileName, id, num_threads, O_WRONLY | O_CREAT) {}
+ThreadWriter<ItemType>::ThreadWriter(const std::string &fileName, int id,
+                                     int num_threads, long fileSize)
+    : ThreadsIO<ItemType>(fileName, id, num_threads, O_WRONLY | O_CREAT | O_TRUNC)
+{
+    OO_IO_Base<ItemType>::setFileSize(fileSize);
+}
 
 /* method to write this thread's chunk to the file
  * @param: v, a vector of Items
@@ -818,92 +884,97 @@ ThreadWriter<ItemType>::ThreadWriter(const std::string& fileName, int id,
  *                at the correct offset for this thread
  *             && the full dataset has been written without gaps or overlap
  *
- * Note: Each thread records its chunk size in a shared array.
- *       The starting offset is computed by summing the sizes of
- *       all preceding threads.
- *
  *       pwrite() is used so each thread writes directly to its
  *       assigned file position without interfering with others.
  */
 
 template <class ItemType>
-void ThreadWriter<ItemType>::writeChunk(const std::vector<ItemType>& v) {
+void ThreadWriter<ItemType>::writeChunk(const std::vector<ItemType> &v)
+{
+    // Total items in file (given by user via fileSize)
+    long totalItems =
+        OO_IO_Base<ItemType>::getFileSize() / sizeof(ItemType);
 
-// Initialize shared chunk-size table once.
-#pragma omp single
-    { threadSizes.assign(OO_IO_Base<ItemType>::getNumPEs(), 0); }
+    OO_IO_Base<ItemType>::setNumItemsInFile(totalItems);
 
-#pragma omp barrier
+    // Compute chunk boundaries
+    long start = 0, stop = 0;
+    getChunkStartStopValues(
+        OO_IO_Base<ItemType>::getID(),
+        OO_IO_Base<ItemType>::getNumPEs(),
+        totalItems,
+        start, stop);
 
-    // Record this thread's chunk size.
-    threadSizes[OO_IO_Base<ItemType>::getID()] = v.size();
+    long expectedChunkSize = stop - start;
+    long actualChunkSize = static_cast<long>(v.size());
 
-#pragma omp barrier
-
-    // Compute starting item offset by summing
-    // all preceding threads' chunk sizes.
-    long start = 0;
-    for (int i = 0; i < OO_IO_Base<ItemType>::getID(); ++i) {
-        start += threadSizes[i];
+    // Safety check: ensure correct partitioning
+    if (actualChunkSize != expectedChunkSize)
+    {
+        fprintf(stderr,
+                "Thread %d: chunk size mismatch (expected %ld, got %ld)\n",
+                OO_IO_Base<ItemType>::getID(),
+                expectedChunkSize,
+                actualChunkSize);
+        exit(EXIT_FAILURE);
     }
 
-    long chunkSize = static_cast<long>(v.size());
-
-    OO_IO_Base<ItemType>::setChunkSize(chunkSize);
+    OO_IO_Base<ItemType>::setChunkSize(actualChunkSize);
     OO_IO_Base<ItemType>::setFirstItemOffset(start);
     OO_IO_Base<ItemType>::setFirstByteOffset(start * sizeof(ItemType));
 
     off_t byteOffset =
         static_cast<off_t>(OO_IO_Base<ItemType>::getFirstByteOffset());
 
-    size_t bytesToWrite = chunkSize * sizeof(ItemType);
+    size_t bytesToWrite = actualChunkSize * sizeof(ItemType);
 
-    ssize_t bytesWritten = pwrite(ThreadsIO<ItemType>::fileDescriptor, v.data(),
-                                  bytesToWrite, byteOffset);
+    // Robust write loop (handles partial writes)
+    size_t totalWritten = 0;
+    const char* data = reinterpret_cast<const char*>(v.data());  // view data as raw bytes for pwrite.
 
-    if (bytesWritten == -1) {
-        perror("pwrite");
-        exit(EXIT_FAILURE);
+    while (totalWritten < bytesToWrite)
+    {
+        ssize_t written = pwrite(
+            ThreadsIO<ItemType>::fileDescriptor,
+            data + totalWritten,
+            bytesToWrite - totalWritten,
+            byteOffset + totalWritten);
+
+        if (written <= 0)
+        {
+            perror("pwrite");
+            exit(EXIT_FAILURE);
+        }
+
+        totalWritten += written;
     }
-
-    if (bytesWritten != static_cast<ssize_t>(bytesToWrite)) {
-        fprintf(stderr, "Thread %d: expected %zu bytes, wrote %zd\n",
-                OO_IO_Base<ItemType>::getID(), bytesToWrite, bytesWritten);
-        exit(EXIT_FAILURE);
-    }
-
-#pragma omp barrier
-
-    // Every thread computes the same totals
-    long totalItems = 0;
-
-    for (size_t s : threadSizes) {
-        totalItems += static_cast<long>(s);
-    }
-
-    OO_IO_Base<ItemType>::setNumItemsInFile(totalItems);
-
-    OO_IO_Base<ItemType>::setFileSize(totalItems * sizeof(ItemType));
-
-#pragma omp barrier
 }
-/**                          HELPER UTILITIES
- * -------------------------------------------------------------------------
- * Place any small, header-safe helper functions here.
- * All functions MUST be declared inline to avoid multiple-definition errors
- * when this header is included in multiple translation units.
- * ------------------------------------------------------------------------- */
 
-/* ----------------------------------------------------------------------
- * mpiType<T>() returns the MPI_Datatype corresponding to a C++ type T.
- * Specializations are defined here, before any template that uses them.
- * Add a new specialization to support an additional ItemType.
- * -------------------------------------------------------------------- */
-template <> inline MPI_Datatype mpiType<int>() { return MPI_INT; }
-template <> inline MPI_Datatype mpiType<long>() { return MPI_LONG; }
-template <> inline MPI_Datatype mpiType<float>() { return MPI_FLOAT; }
-template <> inline MPI_Datatype mpiType<double>() { return MPI_DOUBLE; }
-template <> inline MPI_Datatype mpiType<char>() { return MPI_CHAR; }
+    /**                          HELPER UTILITIES
+     * -------------------------------------------------------------------------
+     * Place any small, header-safe helper functions here.
+     * All functions MUST be declared inline to avoid multiple-definition errors
+     * when this header is included in multiple translation units.
+     * ------------------------------------------------------------------------- */
+
+    /* ----------------------------------------------------------------------
+     * mpiType<T>() returns the MPI_Datatype corresponding to a C++ type T.
+     * Specializations are defined here, before any template that uses them.
+     * Add a new specialization to support an additional ItemType.
+     * -------------------------------------------------------------------- */
+    template <>
+    inline MPI_Datatype mpiType<int>()
+{
+    return MPI_INT;
+}
+template <>
+inline MPI_Datatype mpiType<long>() { return MPI_LONG; }
+template <>
+inline MPI_Datatype mpiType<float>() { return MPI_FLOAT; }
+template <>
+inline MPI_Datatype mpiType<double>() { return MPI_DOUBLE; }
+template <>
+inline MPI_Datatype mpiType<char>() { return MPI_CHAR; }
 
 /* Utility to check the return-values of MPI-IO function calls
  * @param: result, an int
@@ -912,8 +983,10 @@ template <> inline MPI_Datatype mpiType<char>() { return MPI_CHAR; }
  *                 the string associated with result has been printed to stderr
  *                 && the program has been terminated abnormally.
  */
-inline void checkResult(int result) {
-    if (result != MPI_SUCCESS) {
+inline void checkResult(int result)
+{
+    if (result != MPI_SUCCESS)
+    {
         char errorString[1024] = {'\0'};
         int errorStringLength = -1;
         int errorClass = -1;
@@ -946,10 +1019,13 @@ inline void checkResult(int result) {
  *             && stop == this PE's last iteration value + 1.
  */
 inline void getChunkStartStopValues(int id, int numPEs, const unsigned REPS,
-                                    long& start, long& stop) {
+                                    long &start, long &stop)
+{
     // check precondition before proceeding
-    if ((unsigned)numPEs > REPS) {
-        if (id == 0) {
+    if ((unsigned)numPEs > REPS)
+    {
+        if (id == 0)
+        {
             printf("\n*** Number of PEs (%u) exceeds REPS (%u)\n", numPEs,
                    REPS);
             printf("*** Please run using PEs less than or equal to %u\n\n",
@@ -969,7 +1045,8 @@ inline void getChunkStartStopValues(int id, int numPEs, const unsigned REPS,
     // If remainder != 0, chunkSize1 = chunk-size for p_0..p_remainder-1
     //   but for PEs p_remainder..p_numPEs-1
     //   recompute begin and end using a smaller-by-1 chunk size, chunkSize2.
-    if (remainder > 0 && (unsigned)id >= remainder) {
+    if (remainder > 0 && (unsigned)id >= remainder)
+    {
         unsigned chunkSize2 = chunkSize1 - 1;
         unsigned remainderBase = remainder * chunkSize1;
         unsigned peOffset = (id - remainder) * chunkSize2;
@@ -980,38 +1057,3 @@ inline void getChunkStartStopValues(int id, int numPEs, const unsigned REPS,
     start = begin;
     stop = end;
 }
-
-/********************************************************************
- * Timer provides a simple interface for measuring elapsed wall-clock
- * time using OpenMP's omp_get_wtime().
- *
- * Usage:
- *     Timer timer;
- *     timer.start();
- *     ... code to time ...
- *     double elapsed = timer.stop();
- ********************************************************************/
-class Timer {
-public:
-    void start() {
-        #pragma omp barrier
-
-        #pragma omp master
-        myStartTime = omp_get_wtime();
-    }
-
-    double stop() {
-        #pragma omp barrier
-
-        double elapsed = 0.0;
-
-        #pragma omp master
-        elapsed = omp_get_wtime() - myStartTime;
-
-        return elapsed;
-    }
-
-private:
-    double myStartTime = 0.0;
-};
-#endif
