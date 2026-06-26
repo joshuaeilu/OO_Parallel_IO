@@ -46,6 +46,7 @@
 #include <vector>     // std::vector
 #include <unistd.h>   // close()
 #include <sys/stat.h> // fstat()
+#include <chrono>
 
 /* Helper function declarations.
  * The definitions appear later in this file.
@@ -1057,3 +1058,56 @@ inline void getChunkStartStopValues(int id, int numPEs, const unsigned REPS,
     start = begin;
     stop = end;
 }
+
+/* Timer class
+ * Purpose: Provides a simple stopwatch for measuring elapsed wall-clock time.
+ *          The timer may be started and stopped multiple times, accumulating
+ *          the elapsed time across each interval until reset().
+ */
+class Timer {
+private:
+    bool running;
+    std::chrono::time_point<std::chrono::steady_clock> start_time;
+    std::chrono::duration<double> accumulated_time;
+
+public:
+    // Constructor initializes the timer's value to zero
+    Timer() : running(false), accumulated_time(std::chrono::duration<double>::zero()) {}
+
+    // Starts the timer
+    void start() {
+        if (!running) {
+            start_time = std::chrono::steady_clock::now();
+            running = true;
+        }
+    }
+
+    // Stops the timer but does not reset its value, accumulating the elapsed time
+    void stop() {
+        if (running) {
+            auto end_time = std::chrono::steady_clock::now();
+            accumulated_time += std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
+            running = false;
+        }
+    }
+
+    // Resets the timer's value to zero only if it is stopped
+    void reset() {
+        if (!running) {
+            accumulated_time = std::chrono::duration<double>::zero();
+        }
+    }
+
+    // Returns the current value as a double (in seconds).
+    // Note: Most useful when stopped to get the exact accumulated interval.
+    double getTime() const {
+        if (running) {
+            // If called while running, it dynamically calculates the time 
+            // accumulated so far plus the current active lap.
+            auto current_time = std::chrono::steady_clock::now();
+            std::chrono::duration<double> current_lap = current_time - start_time;
+            return (accumulated_time + current_lap).count();
+        }
+        return accumulated_time.count();
+    }
+};
