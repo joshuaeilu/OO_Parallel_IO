@@ -1111,3 +1111,4 @@ public:
         return accumulated_time.count();
     }
 };
+#endif
