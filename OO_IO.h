@@ -46,7 +46,7 @@
 #include <vector>     // std::vector
 #include <unistd.h>   // close()
 #include <sys/stat.h> // fstat()
-#include <chrono>
+
 
 /* Helper function declarations.
  * The definitions appear later in this file.
@@ -619,7 +619,7 @@ public:
     virtual ~ThreadsIO();
 
   protected:
-    int fileDescriptor = -1; 
+    int fileDescriptor = -1; // shared POSIX descriptor (read-only)
 };
 
 /* ThreadsIO constructor
@@ -662,17 +662,16 @@ ThreadsIO<ItemType>::ThreadsIO(const std::string &fileName, int id,
         exit(EXIT_FAILURE);
     }
 
-        // Get file size in bytes for ThreadReader
-        long fileSize = fileInfo.st_size;
-        OO_IO_Base<ItemType>::setFileSize(fileSize);
+    // Get file size in bytes for ThreadReader
+    long fileSize = fileInfo.st_size;
 
-        // Compute number of items in file
-        OO_IO_Base<ItemType>::setNumItemsInFile(
-            fileSize / OO_IO_Base<ItemType>::getItemSize()
-        );
-    
+    OO_IO_Base<ItemType>::setFileSize(fileSize);
 
-    // All threads set this to true once the barrier above is cleared
+    // Compute number of items in file
+    OO_IO_Base<
+        ItemType>::setNumItemsInFile(fileSize /
+                                     OO_IO_Base<ItemType>::getItemSize());
+
     OO_IO_Base<ItemType>::setFileOpened(true);
 }
 
