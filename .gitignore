@@ -1,0 +1,5 @@
+# Ignore benchmark data
+env/
+
+# Or, if you only want to ignore the large files
+env/huge_files/

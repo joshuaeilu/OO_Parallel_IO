@@ -42,6 +42,8 @@
 #include <fcntl.h>    // open(), O_RDONLY
 #include <mpi.h>      // C MPI
 #include <omp.h>      // OpenMP
+#include <sys/mman.h> // mmap(), munmap()
+#include <span>       // std::span
 #include <string>     // std::string
 #include <vector>     // std::vector
 #include <unistd.h>   // close()
@@ -615,11 +617,25 @@ class ThreadsIO : public OO_IO_Base<ItemType>
 public:
     ThreadsIO(const std::string &fileName, int id, int num_threads,
               int openMode);
+    int getFileDescriptor() const { return fileDescriptor; }
+
+    void *getMapBase() const { return myMapBase; }
+
+    const ItemType *getMapData() const { return myMapData; }
+
+    size_t getMapBytes() const { return myMapBytes; }
 
     virtual ~ThreadsIO();
 
-  protected:
-    int fileDescriptor = -1; 
+protected:
+    int fileDescriptor = -1;
+
+private:
+    void mapWholeFile();
+
+    void *myMapBase = nullptr;           // mmap() base (for munmap())
+    const ItemType *myMapData = nullptr; // typed view of the mapping base
+    size_t myMapBytes = 0;               // mapping length, in bytes
 };
 
 /* ThreadsIO constructor
@@ -640,7 +656,8 @@ public:
 template <class ItemType>
 ThreadsIO<ItemType>::ThreadsIO(const std::string &fileName, int id,
                                int num_threads, int openMode)
-    : OO_IO_Base<ItemType>(fileName, id, num_threads) {
+    : OO_IO_Base<ItemType>(fileName, id, num_threads)
+{
     //  Open the file once, on the constructing thread, with the caller-
     //  supplied mode.  The returned descriptor will be shared by every
     //  worker;
@@ -648,7 +665,8 @@ ThreadsIO<ItemType>::ThreadsIO(const std::string &fileName, int id,
     //  openMode
     fileDescriptor = open(fileName.c_str(), openMode, 0644);
 
-    if (fileDescriptor == -1) {
+    if (fileDescriptor == -1)
+    {
         perror("open");
         exit(EXIT_FAILURE);
     }
@@ -657,29 +675,78 @@ ThreadsIO<ItemType>::ThreadsIO(const std::string &fileName, int id,
     struct stat fileInfo;
     // Without the file size we cannot partition the file across the worker
     //  threads; on failure, report the OS error and abort.
-    if (fstat(fileDescriptor, &fileInfo) == -1) {
+    if (fstat(fileDescriptor, &fileInfo) == -1)
+    {
         perror("fstat");
         exit(EXIT_FAILURE);
     }
 
-        // Get file size in bytes for ThreadReader
-        long fileSize = fileInfo.st_size;
-        OO_IO_Base<ItemType>::setFileSize(fileSize);
+    // Get file size in bytes for ThreadReader
+    long fileSize = fileInfo.st_size;
+    OO_IO_Base<ItemType>::setFileSize(fileSize);
 
-        // Compute number of items in file
-        OO_IO_Base<ItemType>::setNumItemsInFile(
-            fileSize / OO_IO_Base<ItemType>::getItemSize()
-        );
-    
+    // Compute number of items in file
+    OO_IO_Base<ItemType>::setNumItemsInFile(
+        fileSize / OO_IO_Base<ItemType>::getItemSize());
+
+    mapWholeFile();
 
     // All threads set this to true once the barrier above is cleared
     OO_IO_Base<ItemType>::setFileOpened(true);
 }
 
-/* ThreadsIO destructor: closes the shared descriptor if it is open. */
+/* mapWholeFile(): mmap the entire file read-only, starting at offset 0.
+ *  Offset 0 is page-aligned, so each thread's chunk is just an offset into
+ *  the base pointer -- no per-chunk mmap-offset alignment is needed.
+ * Postcondition: on a non-empty file, myMapBase/myMapData/myMapBytes describe
+ *  a valid read-only mapping of the whole file; on an empty file they remain
+ *  null/zero and reads return empty spans.
+ */
+template <class ItemType>
+void ThreadsIO<ItemType>::mapWholeFile()
+{
+    long fileSize = OO_IO_Base<ItemType>::getFileSize();
+
+    // mmap() rejects a length of 0, so guard the empty-file case.
+    if (fileSize <= 0)
+    {
+        myMapBase = nullptr;
+        myMapData = nullptr;
+        myMapBytes = 0;
+        return;
+    }
+
+    myMapBytes = static_cast<size_t>(fileSize);
+
+    // Map the whole file, read-only. MAP_PRIVATE is fine here because we
+    //  never write through the mapping; pages are still shared with the
+    //  kernel page cache, so the per-thread mappings do not duplicate data.
+    void *base = mmap(nullptr, myMapBytes, PROT_READ, MAP_PRIVATE, fileDescriptor, 0);
+    if (base == MAP_FAILED)
+    {
+        perror("mmap");
+        exit(EXIT_FAILURE);
+    }
+
+    myMapBase = base;
+    myMapData = reinterpret_cast<const ItemType *>(base);
+
+    // Tuning hint (optional): this thread streams forward through its slice
+    //  exactly once, so ask the kernel for aggressive read-ahead. Comment
+    //  this line out to isolate the effect of mmap itself from the hint.
+    // #ifdef MADV_SEQUENTIAL
+    //     madvise(base, myMapBytes, MADV_SEQUENTIAL);
+    // #endif
+}
+
+/* ThreadsIO destructor: closes the shared descriptor if it is open, and unmaps the shared memory if it was mapped */
 template <class ItemType>
 ThreadsIO<ItemType>::~ThreadsIO()
 {
+    if (myMapBase != nullptr)
+    {
+        munmap(myMapBase, myMapBytes);
+    }
     if (fileDescriptor != -1)
     {
         close(fileDescriptor);
@@ -700,8 +767,8 @@ class ThreadReader : public ThreadsIO<ItemType>
 {
 public:
     ThreadReader(const std::string &fileName, int id, int num_threads);
-    std::vector<ItemType> readChunk();
-    std::vector<ItemType> readChunkPlus(unsigned numExtras);
+    std::span<const ItemType> readChunk();
+    std::span<const ItemType> readChunkPlus(unsigned numExtras);
 };
 
 /* ThreadReader constructor: see ThreadsIO Constructor. */
@@ -714,7 +781,7 @@ ThreadReader<ItemType>::ThreadReader(const std::string &fileName, int id,
  * Return: a vector containing the values of this PE's chunk.
  */
 template <class ItemType>
-std::vector<ItemType> ThreadReader<ItemType>::readChunk()
+std::span<const ItemType> ThreadReader<ItemType>::readChunk()
 {
     long start = 0, stop = 0;
 
@@ -724,41 +791,16 @@ std::vector<ItemType> ThreadReader<ItemType>::readChunk()
                                                       getNumItemsInFile()),
                             start, stop);
 
-    OO_IO_Base<ItemType>::setChunkSize(stop - start);
+    long chunkSize = stop - start;
+    OO_IO_Base<ItemType>::setChunkSize(chunkSize);
     OO_IO_Base<ItemType>::setFirstItemOffset(start);
-    OO_IO_Base<
-        ItemType>::setFirstByteOffset(start *
-                                      OO_IO_Base<ItemType>::getItemSize());
+    OO_IO_Base<ItemType>::setFirstByteOffset(start * OO_IO_Base<ItemType>::getItemSize());
 
-    unsigned long itemsToRead =
-        static_cast<unsigned long>(OO_IO_Base<ItemType>::getChunkSize());
-
-    std::vector<ItemType> chunk(itemsToRead);
-
-    off_t byteOffset =
-        static_cast<off_t>(OO_IO_Base<ItemType>::getFirstByteOffset());
-
-    size_t expectedBytes = itemsToRead * sizeof(ItemType);
-
-    ssize_t bytesRead = pread(ThreadsIO<ItemType>::fileDescriptor, chunk.data(),
-                              expectedBytes, byteOffset);
-
-    if (bytesRead == -1)
+    if ((ThreadsIO<ItemType>::getMapData() == nullptr) || chunkSize <= 0)
     {
-        perror("pread");
-        exit(EXIT_FAILURE);
+        return std::span<const ItemType>(); // empty view
     }
-
-    //  A short or failed read means the chunk is incomplete; report the size
-    //  mismatch and abort.
-    if (bytesRead != static_cast<ssize_t>(expectedBytes))
-    {
-        fprintf(stderr, "Thread %d: expected %zu bytes, got %zd bytes\n",
-                OO_IO_Base<ItemType>::getID(), expectedBytes, bytesRead);
-        exit(EXIT_FAILURE);
-    }
-
-    return chunk;
+    return std::span<const ItemType>(ThreadsIO<ItemType>::getMapData() + start, static_cast<size_t>(chunkSize));
 }
 
 /* method to read a chunk from the file (in its entirety)
@@ -778,7 +820,7 @@ std::vector<ItemType> ThreadReader<ItemType>::readChunk()
  *        the difference between the two versions.
  */
 template <class ItemType>
-std::vector<ItemType>
+std::span<const ItemType>
 ThreadReader<ItemType>::readChunkPlus(unsigned numExtras)
 {
     // Note: the file's size and item count were already recorded by the
@@ -802,41 +844,18 @@ ThreadReader<ItemType>::readChunkPlus(unsigned numExtras)
         stop = numItemsInFile;
     }
 
-    OO_IO_Base<ItemType>::setChunkSize(stop - start);
+    long chunkSize = stop - start;
+    OO_IO_Base<ItemType>::setChunkSize(chunkSize);
     OO_IO_Base<ItemType>::setFirstItemOffset(start);
     OO_IO_Base<
-        ItemType>::setFirstByteOffset(start *
-                                      OO_IO_Base<ItemType>::getItemSize());
+        ItemType>::setFirstByteOffset(start * OO_IO_Base<ItemType>::getItemSize());
 
-    unsigned long itemsToRead =
-        static_cast<unsigned long>(OO_IO_Base<ItemType>::getChunkSize());
-
-    std::vector<ItemType> chunk(itemsToRead);
-
-    off_t byteOffset =
-        static_cast<off_t>(OO_IO_Base<ItemType>::getFirstByteOffset());
-
-    size_t expectedBytes = itemsToRead * sizeof(ItemType);
-
-    ssize_t bytesRead = pread(ThreadsIO<ItemType>::fileDescriptor, chunk.data(),
-                              expectedBytes, byteOffset);
-
-    if (bytesRead == -1)
+    if ((ThreadsIO<ItemType>::myMapData == nullptr) || chunkSize <= 0)
     {
-        perror("pread");
-        exit(EXIT_FAILURE);
+        return std::span<const ItemType>(); // empty view
     }
 
-    // A short or failed read means the chunk is incomplete; report the
-    //  size mismatch and abort.
-    if (bytesRead != static_cast<ssize_t>(expectedBytes))
-    {
-        fprintf(stderr, "Thread %d: expected %zu bytes, got %zd bytes\n",
-                OO_IO_Base<ItemType>::getID(), expectedBytes, bytesRead);
-        exit(EXIT_FAILURE);
-    }
-
-    return chunk;
+    return std::span<const ItemType>(ThreadsIO<ItemType>::myMapData + start, static_cast<size_t>(chunkSize));
 }
 
 /********************************************************************
@@ -931,7 +950,7 @@ void ThreadWriter<ItemType>::writeChunk(const std::vector<ItemType> &v)
 
     // Robust write loop (handles partial writes)
     size_t totalWritten = 0;
-    const char* data = reinterpret_cast<const char*>(v.data());  // view data as raw bytes for pwrite.
+    const char *data = reinterpret_cast<const char *>(v.data()); // view data as raw bytes for pwrite.
 
     while (totalWritten < bytesToWrite)
     {
@@ -951,20 +970,20 @@ void ThreadWriter<ItemType>::writeChunk(const std::vector<ItemType> &v)
     }
 }
 
-    /**                          HELPER UTILITIES
-     * -------------------------------------------------------------------------
-     * Place any small, header-safe helper functions here.
-     * All functions MUST be declared inline to avoid multiple-definition errors
-     * when this header is included in multiple translation units.
-     * ------------------------------------------------------------------------- */
+/**                          HELPER UTILITIES
+ * -------------------------------------------------------------------------
+ * Place any small, header-safe helper functions here.
+ * All functions MUST be declared inline to avoid multiple-definition errors
+ * when this header is included in multiple translation units.
+ * ------------------------------------------------------------------------- */
 
-    /* ----------------------------------------------------------------------
-     * mpiType<T>() returns the MPI_Datatype corresponding to a C++ type T.
-     * Specializations are defined here, before any template that uses them.
-     * Add a new specialization to support an additional ItemType.
-     * -------------------------------------------------------------------- */
-    template <>
-    inline MPI_Datatype mpiType<int>()
+/* ----------------------------------------------------------------------
+ * mpiType<T>() returns the MPI_Datatype corresponding to a C++ type T.
+ * Specializations are defined here, before any template that uses them.
+ * Add a new specialization to support an additional ItemType.
+ * -------------------------------------------------------------------- */
+template <>
+inline MPI_Datatype mpiType<int>()
 {
     return MPI_INT;
 }
@@ -1064,7 +1083,8 @@ inline void getChunkStartStopValues(int id, int numPEs, const unsigned REPS,
  *          The timer may be started and stopped multiple times, accumulating
  *          the elapsed time across each interval until reset().
  */
-class Timer {
+class Timer
+{
 private:
     bool running;
     std::chrono::time_point<std::chrono::steady_clock> start_time;
@@ -1075,16 +1095,20 @@ public:
     Timer() : running(false), accumulated_time(std::chrono::duration<double>::zero()) {}
 
     // Starts the timer
-    void start() {
-        if (!running) {
+    void start()
+    {
+        if (!running)
+        {
             start_time = std::chrono::steady_clock::now();
             running = true;
         }
     }
 
     // Stops the timer but does not reset its value, accumulating the elapsed time
-    void stop() {
-        if (running) {
+    void stop()
+    {
+        if (running)
+        {
             auto end_time = std::chrono::steady_clock::now();
             accumulated_time += std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
             running = false;
@@ -1092,17 +1116,21 @@ public:
     }
 
     // Resets the timer's value to zero only if it is stopped
-    void reset() {
-        if (!running) {
+    void reset()
+    {
+        if (!running)
+        {
             accumulated_time = std::chrono::duration<double>::zero();
         }
     }
 
     // Returns the current value as a double (in seconds).
     // Note: Most useful when stopped to get the exact accumulated interval.
-    double getTime() const {
-        if (running) {
-            // If called while running, it dynamically calculates the time 
+    double getTime() const
+    {
+        if (running)
+        {
+            // If called while running, it dynamically calculates the time
             // accumulated so far plus the current active lap.
             auto current_time = std::chrono::steady_clock::now();
             std::chrono::duration<double> current_lap = current_time - start_time;
