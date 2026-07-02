@@ -41,7 +41,7 @@ void CharWriterTester::runTests(WriterType& writer) {
    
    runFileTests(writer);
    runWriteTests(writer);
-  //  runChunkTests(writer);
+   runChunkTests(writer);
 
    if (id == MASTER) cout << "All char tests passed!\n" << endl;
 }
@@ -79,11 +79,24 @@ void CharWriterTester::runWriteTests(WriterType& writer) {
 
    #pragma omp barrier
 
-  ThreadReader<char> tReader(
-    "./files/6chars_output.bin",
-    id,
-    numProcs);
-   vector<char> v2 = tReader.readChunk();
+  // ThreadReader<char> tReader(
+  //   "./files/6chars_output.bin",
+  //   id,
+  //   numProcs);
+  //  vector<char> v2 = tReader.readChunk();
+
+   vector<char> v2(chunkSize);
+
+   ifstream fin("./files/6chars_output.bin", ios::binary);
+   assert(fin.is_open());
+
+   fin.seekg(start * sizeof(char), ios::beg);
+
+   fin.read(v2.data(), chunkSize * sizeof(char));
+
+   assert(fin.gcount() == static_cast<std::streamsize>(chunkSize * sizeof(char)));
+
+   fin.close();
 
    assert( v2.size() == v1.size() );
    for (int i = 0; i < v2.size(); ++i) {

@@ -61,7 +61,7 @@ void CharReaderTester::runTests(ReaderType & reader)
 
   runFileTests1(reader, 2);
   runReadTests1(reader, 2);
-  // runChunkTests1(reader, 2);
+  runChunkTests1(reader, 2);
 
   if (id == MASTER)
     cout << "All char tests passed!\n"
@@ -207,7 +207,7 @@ void CharReaderTester::
   if (id == MASTER)
     cout << "- Running read() tests... " << flush;
 
-  vector<char> v1 = reader.readChunk();
+  std::span<const char> v1 = reader.readChunk();
 
   assert(reader.getFileSize() == 6); // 1 x 6
   printf("NumItemsInFile: %ld\n", reader.getNumItemsInFile());
@@ -381,7 +381,7 @@ void CharReaderTester::
   if (id == MASTER)
     cout << "- Running read() tests... " << flush;
 
-  vector<char> v1 = reader.readChunkPlus(numExtras);
+  std::span<const char> v1 = reader.readChunkPlus(numExtras);
 
   assert(reader.getFileSize() == 6); // 1 x 6
   printf("NumItemsInFile: %ld\n", reader.getNumItemsInFile());

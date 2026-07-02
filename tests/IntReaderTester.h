@@ -543,7 +543,7 @@ runReadTests(ReaderType &reader) {
    
    if (id == MASTER) cout << "- Running read() tests... " << flush;
 
-   vector<int> v1 = reader.readChunk();
+   std::span<const int> v1 = reader.readChunk();
 
    assert( reader.getFileSize() == 48 );         // 12 x 4
    assert( reader.getNumItemsInFile() == 12 );
