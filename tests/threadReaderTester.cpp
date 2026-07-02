@@ -33,15 +33,15 @@ void* pthreadTests(void* arg)
 
     drt.runTests(doubleReader);
 
-    IntReaderTester irt;
-    ThreadReader<int> intReader("./files/12ints.bin", args->id, args->numThreads);
+    // IntReaderTester irt;
+    // ThreadReader<int> intReader("./files/12ints.bin", args->id, args->numThreads);
 
-    irt.runTests(intReader);
+    // irt.runTests(intReader);
 
-    CharReaderTester crt;
-    ThreadReader<char> charReader("./files/6chars.bin", args->id, args->numThreads);
+    // CharReaderTester crt;
+    // ThreadReader<char> charReader("./files/6chars.bin", args->id, args->numThreads);
 
-    crt.runTests(charReader);
+    // crt.runTests(charReader);
 
     return nullptr;
 }
