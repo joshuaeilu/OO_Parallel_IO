@@ -49,6 +49,7 @@
 #include <unistd.h>   // close()
 #include <sys/stat.h> // fstat()
 #include <chrono>
+#include <atomic> // std::atomic
 
 /* Helper function declarations.
  * The definitions appear later in this file.
@@ -57,7 +58,7 @@
 template <typename T>
 inline MPI_Datatype mpiType();
 inline void checkResult(int result);
-inline void getChunkStartStopValues(int id, int numPEs, const unsigned REPS,
+inline void getChunkStartStopValues(int id, int numPEs, const long REPS,
                                     long &start, long &stop);
 
 /********************************************************************
@@ -617,26 +618,59 @@ class ThreadsIO : public OO_IO_Base<ItemType>
 public:
     ThreadsIO(const std::string &fileName, int id, int num_threads,
               int openMode);
-    int getFileDescriptor() const { return fileDescriptor; }
 
-    void *getMapBase() const { return myMapBase; }
+    int getFileDescriptor() const { return sharedFileDescriptor; }
 
-    const ItemType *getMapData() const { return myMapData; }
+    void *getMapBase() const { return sharedMapBase; }
 
-    size_t getMapBytes() const { return myMapBytes; }
+    const ItemType *getMapData() const { return sharedMapData; }
+
+    size_t getMapBytes() const { return sharedMapBytes; }
 
     virtual ~ThreadsIO();
-
-protected:
-    int fileDescriptor = -1;
 
 private:
     void mapWholeFile();
 
-    void *myMapBase = nullptr;           // mmap() base (for munmap())
-    const ItemType *myMapData = nullptr; // typed view of the mapping base
-    size_t myMapBytes = 0;               // mapping length, in bytes
+    // Initialization synchronization.
+    static std::atomic<bool> openFlag;
+
+    // Number of thread objects still using the shared file.
+    static std::atomic<int> remainingUsers;
+
+    // Shared file/mmap state, visible to all ThreadReader/ThreadWriter objects
+    // of the same ItemType.
+    static int sharedFileDescriptor;
+    static void *sharedMapBase;
+    static const ItemType *sharedMapData;
+    static size_t sharedMapBytes;
+    static long sharedFileSize;
+    static long sharedNumItemsInFile;
 };
+
+template <class ItemType>
+std::atomic<bool> ThreadsIO<ItemType>::openFlag{false};
+
+template <class ItemType>
+std::atomic<int> ThreadsIO<ItemType>::remainingUsers{0};
+
+template <class ItemType>
+int ThreadsIO<ItemType>::sharedFileDescriptor{-1};
+
+template <class ItemType>
+void *ThreadsIO<ItemType>::sharedMapBase{nullptr};
+
+template <class ItemType>
+const ItemType *ThreadsIO<ItemType>::sharedMapData{nullptr};
+
+template <class ItemType>
+size_t ThreadsIO<ItemType>::sharedMapBytes{0};
+
+template <class ItemType>
+long ThreadsIO<ItemType>::sharedFileSize{0};
+
+template <class ItemType>
+long ThreadsIO<ItemType>::sharedNumItemsInFile{0};
 
 /* ThreadsIO constructor
  * @param: fileName, a string
@@ -658,41 +692,57 @@ ThreadsIO<ItemType>::ThreadsIO(const std::string &fileName, int id,
                                int num_threads, int openMode)
     : OO_IO_Base<ItemType>(fileName, id, num_threads)
 {
-    //  Open the file once, on the constructing thread, with the caller-
-    //  supplied mode.  The returned descriptor will be shared by every
-    //  worker;
-    //  0644 parameter are the file permissions used only when O_CREAT is in
-    //  openMode
-    fileDescriptor = open(fileName.c_str(), openMode, 0644);
-
-    if (fileDescriptor == -1)
+    if (id == 0)
     {
-        perror("open");
-        exit(EXIT_FAILURE);
+        sharedFileDescriptor = open(fileName.c_str(), openMode, 0644);
+
+        if (sharedFileDescriptor == -1)
+        {
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+
+        struct stat fileInfo;
+        if (fstat(sharedFileDescriptor, &fileInfo) == -1)
+        {
+            perror("fstat");
+            exit(EXIT_FAILURE);
+        }
+
+        sharedFileSize = static_cast<long>(fileInfo.st_size);
+        sharedNumItemsInFile =
+            sharedFileSize / OO_IO_Base<ItemType>::getItemSize();
+
+        // Only readers should mmap. ThreadWriter still needs the shared fd
+        // for pwrite(), but it should not mmap an O_WRONLY file.
+        if (openMode == O_RDONLY)
+        {
+            mapWholeFile();
+        }
+        else
+        {
+            sharedMapBase = nullptr;
+            sharedMapData = nullptr;
+            sharedMapBytes = 0;
+        }
+
+        // Track how many thread objects use the shared file mapping.
+        // The last thread object will close and unmap the file.
+        remainingUsers.store(num_threads, std::memory_order_release);
+
+        // Wake up the other threads now that open(), fstat(), and mmap() are done.
+        openFlag.store(true, std::memory_order_release);
+        openFlag.notify_all();
+    }
+    else
+    {
+        // Wait until thread 0 finishes open(), fstat(), and mmap().
+        openFlag.wait(false, std::memory_order_acquire);
     }
 
-    // Check the open descriptor's metadata for the file's size in bytes.
-    struct stat fileInfo;
-    // Without the file size we cannot partition the file across the worker
-    //  threads; on failure, report the OS error and abort.
-    if (fstat(fileDescriptor, &fileInfo) == -1)
-    {
-        perror("fstat");
-        exit(EXIT_FAILURE);
-    }
-
-    // Get file size in bytes for ThreadReader
-    long fileSize = fileInfo.st_size;
-    OO_IO_Base<ItemType>::setFileSize(fileSize);
-
-    // Compute number of items in file
-    OO_IO_Base<ItemType>::setNumItemsInFile(
-        fileSize / OO_IO_Base<ItemType>::getItemSize());
-
-    mapWholeFile();
-
-    // All threads set this to true once the barrier above is cleared
-    OO_IO_Base<ItemType>::setFileOpened(true);
+    OO_IO_Base<ItemType>::setFileSize(sharedFileSize);
+    OO_IO_Base<ItemType>::setNumItemsInFile(sharedNumItemsInFile);
+    OO_IO_Base<ItemType>::setFileOpened(sharedFileDescriptor != -1);
 }
 
 /* mapWholeFile(): mmap the entire file read-only, starting at offset 0.
@@ -705,37 +755,35 @@ ThreadsIO<ItemType>::ThreadsIO(const std::string &fileName, int id,
 template <class ItemType>
 void ThreadsIO<ItemType>::mapWholeFile()
 {
-    long fileSize = OO_IO_Base<ItemType>::getFileSize();
-
-    // mmap() rejects a length of 0, so guard the empty-file case.
-    if (fileSize <= 0)
+    if (sharedFileSize <= 0)
     {
-        myMapBase = nullptr;
-        myMapData = nullptr;
-        myMapBytes = 0;
+        sharedMapBase = nullptr;
+        sharedMapData = nullptr;
+        sharedMapBytes = 0;
         return;
     }
 
-    myMapBytes = static_cast<size_t>(fileSize);
+    sharedMapBytes = static_cast<size_t>(sharedFileSize);
 
-    // Map the whole file, read-only. MAP_PRIVATE is fine here because we
-    //  never write through the mapping; pages are still shared with the
-    //  kernel page cache, so the per-thread mappings do not duplicate data.
-    void *base = mmap(nullptr, myMapBytes, PROT_READ, MAP_PRIVATE, fileDescriptor, 0);
+    void *base = mmap(nullptr,
+                      sharedMapBytes,
+                      PROT_READ,
+                      MAP_PRIVATE,
+                      sharedFileDescriptor,
+                      0);
+
     if (base == MAP_FAILED)
     {
         perror("mmap");
         exit(EXIT_FAILURE);
     }
 
-    myMapBase = base;
-    myMapData = reinterpret_cast<const ItemType *>(base);
+    sharedMapBase = base;
+    sharedMapData = reinterpret_cast<const ItemType *>(base);
 
-    // Tuning hint (optional): this thread streams forward through its slice
-    //  exactly once, so ask the kernel for aggressive read-ahead. Comment
-    //  this line out to isolate the effect of mmap itself from the hint.
+    // Optional tuning:
     // #ifdef MADV_SEQUENTIAL
-    //     madvise(base, myMapBytes, MADV_SEQUENTIAL);
+    //     madvise(base, sharedMapBytes, MADV_SEQUENTIAL);
     // #endif
 }
 
@@ -743,13 +791,30 @@ void ThreadsIO<ItemType>::mapWholeFile()
 template <class ItemType>
 ThreadsIO<ItemType>::~ThreadsIO()
 {
-    if (myMapBase != nullptr)
+    int oldRemaining = remainingUsers.fetch_sub(1, std::memory_order_acq_rel);
+
+    // The last thread object cleans up the shared resources.
+    if (oldRemaining == 1)
     {
-        munmap(myMapBase, myMapBytes);
-    }
-    if (fileDescriptor != -1)
-    {
-        close(fileDescriptor);
+        if (sharedMapBase != nullptr)
+        {
+            munmap(sharedMapBase, sharedMapBytes);
+        }
+
+        if (sharedFileDescriptor != -1)
+        {
+            close(sharedFileDescriptor);
+        }
+
+        sharedFileDescriptor = -1;
+        sharedMapBase = nullptr;
+        sharedMapData = nullptr;
+        sharedMapBytes = 0;
+        sharedFileSize = 0;
+        sharedNumItemsInFile = 0;
+
+        // Reset so a later read/write operation can initialize again.
+        openFlag.store(false, std::memory_order_release);
     }
 }
 
@@ -783,12 +848,20 @@ ThreadReader<ItemType>::ThreadReader(const std::string &fileName, int id,
 template <class ItemType>
 std::span<const ItemType> ThreadReader<ItemType>::readChunk()
 {
+    long numItemsInFile = OO_IO_Base<ItemType>::getNumItemsInFile();
+
+    if (numItemsInFile <= 0)
+    {
+        OO_IO_Base<ItemType>::setChunkSize(0);
+        OO_IO_Base<ItemType>::setFirstItemOffset(0);
+        OO_IO_Base<ItemType>::setFirstByteOffset(0);
+        return std::span<const ItemType>();
+    }
     long start = 0, stop = 0;
 
     getChunkStartStopValues(OO_IO_Base<ItemType>::getID(),
                             OO_IO_Base<ItemType>::getNumPEs(),
-                            static_cast<unsigned>(OO_IO_Base<ItemType>::
-                                                      getNumItemsInFile()),
+                            OO_IO_Base<ItemType>::getNumItemsInFile(),
                             start, stop);
 
     long chunkSize = stop - start;
@@ -796,11 +869,14 @@ std::span<const ItemType> ThreadReader<ItemType>::readChunk()
     OO_IO_Base<ItemType>::setFirstItemOffset(start);
     OO_IO_Base<ItemType>::setFirstByteOffset(start * OO_IO_Base<ItemType>::getItemSize());
 
-    if ((ThreadsIO<ItemType>::getMapData() == nullptr) || chunkSize <= 0)
+    if ((this->getMapData() == nullptr) || chunkSize <= 0)
     {
         return std::span<const ItemType>(); // empty view
     }
-    return std::span<const ItemType>(ThreadsIO<ItemType>::getMapData() + start, static_cast<size_t>(chunkSize));
+
+    return std::span<const ItemType>(
+        this->getMapData() + start,
+        static_cast<size_t>(chunkSize));
 }
 
 /* method to read a chunk from the file (in its entirety)
@@ -827,6 +903,14 @@ ThreadReader<ItemType>::readChunkPlus(unsigned numExtras)
     //  ThreadsIO constructor (via fstat), so unlike the MPI version we
     //  do not re-stat the file here.
     long numItemsInFile = OO_IO_Base<ItemType>::getNumItemsInFile();
+
+    if (numItemsInFile <= 0)
+    {
+        OO_IO_Base<ItemType>::setChunkSize(0);
+        OO_IO_Base<ItemType>::setFirstItemOffset(0);
+        OO_IO_Base<ItemType>::setFirstByteOffset(0);
+        return std::span<const ItemType>();
+    }
     long start = 0, stop = 0;
     int id = OO_IO_Base<ItemType>::getID();
     int numPEs = OO_IO_Base<ItemType>::getNumPEs();
@@ -850,12 +934,14 @@ ThreadReader<ItemType>::readChunkPlus(unsigned numExtras)
     OO_IO_Base<
         ItemType>::setFirstByteOffset(start * OO_IO_Base<ItemType>::getItemSize());
 
-    if ((ThreadsIO<ItemType>::myMapData == nullptr) || chunkSize <= 0)
+    if ((this->getMapData() == nullptr) || chunkSize <= 0)
     {
         return std::span<const ItemType>(); // empty view
     }
 
-    return std::span<const ItemType>(ThreadsIO<ItemType>::myMapData + start, static_cast<size_t>(chunkSize));
+    return std::span<const ItemType>(
+        this->getMapData() + start,
+        static_cast<size_t>(chunkSize));
 }
 
 /********************************************************************
@@ -955,7 +1041,7 @@ void ThreadWriter<ItemType>::writeChunk(const std::vector<ItemType> &v)
     while (totalWritten < bytesToWrite)
     {
         ssize_t written = pwrite(
-            ThreadsIO<ItemType>::fileDescriptor,
+            this->getFileDescriptor(),
             data + totalWritten,
             bytesToWrite - totalWritten,
             byteOffset + totalWritten);
@@ -1038,17 +1124,17 @@ inline void checkResult(int result)
  * Postcondition: start == this PE's first iteration value
  *             && stop == this PE's last iteration value + 1.
  */
-inline void getChunkStartStopValues(int id, int numPEs, const unsigned REPS,
+inline void getChunkStartStopValues(int id, int numPEs, const long REPS,
                                     long &start, long &stop)
 {
     // check precondition before proceeding
-    if ((unsigned)numPEs > REPS)
+    if (numPEs > REPS)
     {
         if (id == 0)
         {
-            printf("\n*** Number of PEs (%u) exceeds REPS (%u)\n", numPEs,
+            printf("\n*** Number of PEs (%d) exceeds REPS (%ld)\n", numPEs,
                    REPS);
-            printf("*** Please run using PEs less than or equal to %u\n\n",
+            printf("*** Please run using PEs less than or equal to %ld\n\n",
                    REPS);
         }
         exit(EXIT_FAILURE);
@@ -1056,20 +1142,20 @@ inline void getChunkStartStopValues(int id, int numPEs, const unsigned REPS,
     }
 
     // compute the chunk size that works in many cases
-    unsigned chunkSize1 = (REPS + numPEs - 1) / numPEs; // integer ceiling
-    unsigned begin = id * chunkSize1;
-    unsigned end = begin + chunkSize1;
+    long chunkSize1 = (REPS + numPEs - 1) / numPEs; // integer ceiling
+    long begin = id * chunkSize1;
+    long end = begin + chunkSize1;
     // see if there are any leftover iterations
-    unsigned remainder = REPS % numPEs;
+    long remainder = REPS % numPEs;
     // If remainder == 0, chunkSize1 = chunk-size for all PEs;
     // If remainder != 0, chunkSize1 = chunk-size for p_0..p_remainder-1
     //   but for PEs p_remainder..p_numPEs-1
     //   recompute begin and end using a smaller-by-1 chunk size, chunkSize2.
-    if (remainder > 0 && (unsigned)id >= remainder)
+    if (remainder > 0 && id >= remainder)
     {
-        unsigned chunkSize2 = chunkSize1 - 1;
-        unsigned remainderBase = remainder * chunkSize1;
-        unsigned peOffset = (id - remainder) * chunkSize2;
+        long chunkSize2 = chunkSize1 - 1;
+        long remainderBase = remainder * chunkSize1;
+        long peOffset = (id - remainder) * chunkSize2;
         begin = remainderBase + peOffset;
         end = begin + chunkSize2;
     }
