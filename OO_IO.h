@@ -959,7 +959,7 @@ class ThreadWriter : public ThreadsIO<ItemType>
 {
 public:
     ThreadWriter(const std::string &fileName, int id, int num_threads, long fileSize);
-    void writeChunk(const std::vector<ItemType> &v);
+    void writeChunk(const std::span<const ItemType> &v);
 };
 
 /* ThreadWriter constructor
@@ -995,11 +995,10 @@ ThreadWriter<ItemType>::ThreadWriter(const std::string &fileName, int id,
  */
 
 template <class ItemType>
-void ThreadWriter<ItemType>::writeChunk(const std::vector<ItemType> &v)
+void ThreadWriter<ItemType>::writeChunk(const std::span<const ItemType> &v)
 {
     // Total items in file (given by user via fileSize)
-    long totalItems =
-        OO_IO_Base<ItemType>::getFileSize() / sizeof(ItemType);
+    long totalItems = OO_IO_Base<ItemType>::getFileSize() / sizeof(ItemType);
 
     OO_IO_Base<ItemType>::setNumItemsInFile(totalItems);
 
