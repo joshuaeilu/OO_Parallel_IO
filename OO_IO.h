@@ -1,5 +1,5 @@
-/*   OO_IO.h (Version 3) declares C++ templates that use MPI and OPENMP to read
- *     and write binary files.
+/*   OO_IO.h (Version 3) declares C++ templates for reading and writing binary files.
+ *   It provides:
  *   - MPIProcessReader and MPIProcessWriter uses Processes or Cores for
  *     execution
  *   - ThreadReader and ThreadWriter uses Threads for execution.
@@ -7,10 +7,9 @@
  *   The template allows you to pass a type-parameter indicating the type of the
  *   data in the file.
  *
- *   Note: Divides the MPI and OpenMP logic so that no necessary work is needed
- *   by the user to use either one of them.
- *   - MPI_Dataype no longer needs to be passed by the user (automatically
- * derived from the type parameter)
+ *   Note: OO_IO hides most MPI-IO and POSIX I/O details from the user.
+ *   - The MPI_Datatype corresponding to ItemType is selected automatically.
+ *   - ThreadReader uses mmap() to map the file into memory.
  *
  *   @author: Joel C. Adams, for CS 374 at Calvin University.
  *   @date:   Summer 2026
@@ -49,7 +48,8 @@
 #include <unistd.h>   // close()
 #include <sys/stat.h> // fstat()
 #include <chrono>
-#include <atomic> // std::atomic
+#include <atomic>     // std::atomic
+#include <cstring>    // std::memcpy
 
 /* Helper function declarations.
  * The definitions appear later in this file.
@@ -95,20 +95,11 @@ public:
 protected:
     void setID(int newID);
     void setNumPEs(int newNumPEs);
-    void setNumItemsInFile(long numItemsInFile)
-    {
-        myNumItemsInFile = numItemsInFile;
-    }
+    void setNumItemsInFile(long numItemsInFile) { myNumItemsInFile = numItemsInFile; }
     void setFileSize(MPI_Offset fileSize) { myFileSize = fileSize; }
     void setChunkSize(long chunkSize) { myChunkSize = chunkSize; }
-    void setFirstItemOffset(long firstItemOffset)
-    {
-        myFirstItemOffset = firstItemOffset;
-    }
-    void setFirstByteOffset(long firstByteOffset)
-    {
-        myFirstByteOffset = firstByteOffset;
-    }
+    void setFirstItemOffset(long firstItemOffset) { myFirstItemOffset = firstItemOffset; }
+    void setFirstByteOffset(long firstByteOffset) { myFirstByteOffset = firstByteOffset; }
     void setFileOpened(bool opened) { didFileOpen = opened; }
     void setUsesMPI(bool value) { usesMPI = value; }
 
@@ -139,7 +130,7 @@ private:
  * Precondition: fileName is the name of a file containing
  *                binary-format values of type ItemType
  *           &&  id is a thread id or MPI process
- *           &&  numPEs is the number of threads or prrankocesses.
+ *           &&  numPEs is the number of threads or processes.
  *           &&  mpiType is the MPI equivalent of ItemType
  * Postcondition: every instance variable has been initialized;
  *           &&  the per-chunk fields are set to defaults until a read/write.
@@ -284,7 +275,7 @@ private:
 
 /*
  *   Ensure a single process-wide MPI runtime (init/finalize).
- *   Call mpiRuntime() before any MPI calls.
+ *   Note: The user should call mpiRuntime() before any MPI calls.
  */
 inline MPI_Runtime &mpiRuntime()
 {
@@ -329,7 +320,7 @@ ProcessesIO<ItemType>::ProcessesIO(const std::string &fileName, int mpiMode)
 
     // Open the file for parallel input using MPI-IO
     int result = MPI_File_open(MPI_COMM_WORLD, fileName.c_str(), mpiMode,
-                               MPI_INFO_NULL, &this->getFileHandle());
+                               MPI_INFO_NULL, &OO_IO_Base<ItemType>::getFileHandle());
     checkResult(result);
     OO_IO_Base<ItemType>::setFileOpened(true);
 }
@@ -353,7 +344,8 @@ public:
 
 /* MPIProcessReader constructor
  * @param: fileName, a string
- * Precondition: fileName is the name of a file containing
+ * Precondition: fileName is the name of a file containing binary-format
+ *                values of type ItemType.
  * Postcondition: the file has been opened for parallel input
  *           &&  each instance variable have been initialized
  *                as appropriate for this PE using the file's info.
@@ -381,9 +373,7 @@ std::vector<ItemType> MPIProcessReader<ItemType>::readChunk()
     //   char
     //      --fileSize;                                     // ignore EOF char
     //   }
-    OO_IO_Base<
-        ItemType>::setNumItemsInFile(fileSize /
-                                     OO_IO_Base<ItemType>::getItemSize());
+    OO_IO_Base<ItemType>::setNumItemsInFile(fileSize / OO_IO_Base<ItemType>::getItemSize());
 
     long start = 0, stop = 0;
     getChunkStartStopValues(OO_IO_Base<ItemType>::getID(),
@@ -392,9 +382,7 @@ std::vector<ItemType> MPIProcessReader<ItemType>::readChunk()
                             start, stop);
     OO_IO_Base<ItemType>::setChunkSize(stop - start);
     OO_IO_Base<ItemType>::setFirstItemOffset(start);
-    OO_IO_Base<
-        ItemType>::setFirstByteOffset(start *
-                                      OO_IO_Base<ItemType>::getItemSize());
+    OO_IO_Base<ItemType>::setFirstByteOffset(start * OO_IO_Base<ItemType>::getItemSize());
 
     MPI_Status status;
     unsigned long itemsRead = 0;
@@ -404,23 +392,19 @@ std::vector<ItemType> MPIProcessReader<ItemType>::readChunk()
     // handle very large files where chunkSize > INT_MAX
     while (itemsToRead > INT_MAX)
     {
-        readResult =
-            MPI_File_read_at(OO_IO_Base<ItemType>::getFileHandle(),
-                             OO_IO_Base<ItemType>::getFirstByteOffset() +
-                                 itemsRead,
-                             v.data() + itemsRead, INT_MAX,
-                             OO_IO_Base<ItemType>::getMPIType(), &status);
+        readResult = MPI_File_read_at(OO_IO_Base<ItemType>::getFileHandle(),
+                                      OO_IO_Base<ItemType>::getFirstByteOffset() + itemsRead,
+                                      v.data() + itemsRead, INT_MAX,
+                                      OO_IO_Base<ItemType>::getMPIType(), &status);
         checkResult(readResult);
         itemsRead += INT_MAX;
         itemsToRead -= INT_MAX;
     }
     // read in remaining Items (or if itemsToRead <= INT_MAX initially)
-    readResult =
-        MPI_File_read_at(OO_IO_Base<ItemType>::getFileHandle(),
-                         OO_IO_Base<ItemType>::getFirstByteOffset() +
-                             itemsRead,
-                         v.data() + itemsRead, itemsToRead,
-                         OO_IO_Base<ItemType>::getMPIType(), &status);
+    readResult = MPI_File_read_at(OO_IO_Base<ItemType>::getFileHandle(),
+                                  OO_IO_Base<ItemType>::getFirstByteOffset() + itemsRead,
+                                  v.data() + itemsRead, itemsToRead,
+                                  OO_IO_Base<ItemType>::getMPIType(), &status);
     checkResult(readResult);
 
     return v;
@@ -457,9 +441,7 @@ MPIProcessReader<ItemType>::readChunkPlus(unsigned numExtras)
     //   char
     //      --fileSize;                                     // ignore EOF char
     //   }
-    OO_IO_Base<
-        ItemType>::setNumItemsInFile(fileSize /
-                                     OO_IO_Base<ItemType>::getItemSize());
+    OO_IO_Base<ItemType>::setNumItemsInFile(fileSize / OO_IO_Base<ItemType>::getItemSize());
 
     long numItemsInFile = OO_IO_Base<ItemType>::getNumItemsInFile();
     long start = 0, stop = 0;
@@ -476,9 +458,7 @@ MPIProcessReader<ItemType>::readChunkPlus(unsigned numExtras)
     }
     OO_IO_Base<ItemType>::setChunkSize(stop - start);
     OO_IO_Base<ItemType>::setFirstItemOffset(start);
-    OO_IO_Base<
-        ItemType>::setFirstByteOffset(start *
-                                      OO_IO_Base<ItemType>::getItemSize());
+    OO_IO_Base<ItemType>::setFirstByteOffset(start * OO_IO_Base<ItemType>::getItemSize());
 
     MPI_Status status;
     unsigned long itemsRead = 0;
@@ -488,23 +468,19 @@ MPIProcessReader<ItemType>::readChunkPlus(unsigned numExtras)
     // handle very large files where chunkSize > INT_MAX
     while (itemsToRead > INT_MAX)
     {
-        readResult =
-            MPI_File_read_at(OO_IO_Base<ItemType>::getFileHandle(),
-                             OO_IO_Base<ItemType>::getFirstByteOffset() +
-                                 itemsRead,
-                             v.data() + itemsRead, INT_MAX,
-                             OO_IO_Base<ItemType>::getMPIType(), &status);
+        readResult = MPI_File_read_at(OO_IO_Base<ItemType>::getFileHandle(),
+                                      OO_IO_Base<ItemType>::getFirstByteOffset() + itemsRead,
+                                      v.data() + itemsRead, INT_MAX,
+                                      OO_IO_Base<ItemType>::getMPIType(), &status);
         checkResult(readResult);
         itemsRead += INT_MAX;
         itemsToRead -= INT_MAX;
     }
     // read in remaining Items (or if itemsToRead <= INT_MAX initially)
-    readResult =
-        MPI_File_read_at(OO_IO_Base<ItemType>::getFileHandle(),
-                         OO_IO_Base<ItemType>::getFirstByteOffset() +
-                             itemsRead,
-                         v.data() + itemsRead, itemsToRead,
-                         OO_IO_Base<ItemType>::getMPIType(), &status);
+    readResult = MPI_File_read_at(OO_IO_Base<ItemType>::getFileHandle(),
+                                  OO_IO_Base<ItemType>::getFirstByteOffset() + itemsRead,
+                                  v.data() + itemsRead, itemsToRead,
+                                  OO_IO_Base<ItemType>::getMPIType(), &status);
     checkResult(readResult);
 
     return v;
@@ -518,8 +494,7 @@ MPIProcessReader<ItemType>::readChunkPlus(unsigned numExtras)
  ******************************************************************/
 
 template <class ItemType>
-class MPIProcessWriter
-    : public ProcessesIO<ItemType>
+class MPIProcessWriter : public ProcessesIO<ItemType>
 {
 public:
     MPIProcessWriter(const std::string &fileName);
@@ -530,9 +505,8 @@ public:
 
 /* MPIProcessWriter constructor
  * @param: fileName, a string
- * Precondition: fileName is the name of an output file
- *                to which binary-format values
- *                of type ItemType are to be written.
+ * Precondition: fileName is the name of an output file to which
+ *               binary-format values of type ItemType are to be written.
  * Postcondition: the file has been opened for parallel output
  *             &&  each instance variable have been initialized
  *                  as appropriate for this PE using id, numPEs,
@@ -584,8 +558,7 @@ void MPIProcessWriter<ItemType>::writeChunk(const std::vector<ItemType> &v)
         writeResult =
             MPI_File_write_at(OO_IO_Base<ItemType>::getFileHandle(),
                               OO_IO_Base<ItemType>::getFirstByteOffset() +
-                                  static_cast<MPI_Offset>(itemsWritten) *
-                                      itemSize,
+                                  static_cast<MPI_Offset>(itemsWritten) * itemSize,
                               v.data() + itemsWritten, INT_MAX,
                               OO_IO_Base<ItemType>::getMPIType(), &status);
         checkResult(writeResult);
@@ -603,12 +576,13 @@ void MPIProcessWriter<ItemType>::writeChunk(const std::vector<ItemType> &v)
 }
 
 /********************************************************************
- * ThreadsIO opens a file (read-only) for the shared-memory thread
- *  backends and records its size.  It owns the single POSIX file
- *  descriptor that the worker threads read through with pread().
+ * ThreadsIO is a base class for shared-memory thread backends that use
+ *  POSIX threads.
  *
  * It does NOT create threads, synchronize them, or schedule chunks;
- *  those are the responsibility of the user.
+ * Those responsibilites belong to its sub-classes and the user.
+ *
+ * It's sub-classes are ThreadReader and ThreadWriter.
  *
  ********************************************************************/
 
@@ -616,18 +590,59 @@ template <class ItemType>
 class ThreadsIO : public OO_IO_Base<ItemType>
 {
 public:
-    ThreadsIO(const std::string &fileName, int id, int num_threads,
-              int openMode);
-
-    int getFileDescriptor() const { return sharedFileDescriptor; }
-
-    void *getMapBase() const { return sharedMapBase; }
-
-    const ItemType *getMapData() const { return sharedMapData; }
-
-    size_t getMapBytes() const { return sharedMapBytes; }
+    ThreadsIO(const std::string &fileName, int id, int num_threads);
 
     virtual ~ThreadsIO();
+};
+
+/* ThreadsIO constructor
+ * @param: fileName, a string
+ * @param: id, an int
+ * @param: numThreads, an int
+ * Precondition: id >= 0
+ *           &&  numThreads > 0
+ *           &&  fileName is the name of the file to be read or written.
+ */
+template <class ItemType>
+ThreadsIO<ItemType>::ThreadsIO(const std::string &fileName, int id,
+                               int num_threads)
+    : OO_IO_Base<ItemType>(fileName, id, num_threads)
+{
+}
+
+/* ThreadsIO destructor */
+template <class ItemType>
+ThreadsIO<ItemType>::~ThreadsIO()
+{
+}
+
+/********************************************************************
+ * The ThreadReader template provides an abstraction to hide the details of
+ * threads parallel input.
+ *
+ * Thread 0 opens the file, determines its size, and maps the whole file
+ *  using mmap().  The other Threads wait until this shared mapping is ready before
+ *  calling readChunk() or readChunkPlus().
+ *
+ * Note: the returned spans are valid only while the shared mapping remains
+ *  alive.  The last ThreadReader object unmaps the file and closes the
+ *  shared descriptor.
+ ********************************************************************/
+template <class ItemType>
+class ThreadReader : public ThreadsIO<ItemType>
+{
+public:
+    ThreadReader(const std::string &fileName, int id, int num_threads);
+
+    std::span<const ItemType> readChunk();
+    std::span<const ItemType> readChunkPlus(unsigned numExtras);
+
+    int getFileDescriptor() const { return sharedFd; }
+    void *getMapBase() const { return sharedMapBase; }
+    const ItemType *getMapData() const { return sharedMapData; }
+    size_t getMapBytes() const { return sharedMapBytes; }
+
+    virtual ~ThreadReader();
 
 private:
     void mapWholeFile();
@@ -635,12 +650,11 @@ private:
     // Initialization synchronization.
     static std::atomic<bool> openFlag;
 
-    // Number of thread objects still using the shared file.
+    // Number of ThreadReader objects still using the shared mmap.
     static std::atomic<int> remainingUsers;
 
-    // Shared file/mmap state, visible to all ThreadReader/ThreadWriter objects
-    // of the same ItemType.
-    static int sharedFileDescriptor;
+    // Shared reader state.
+    static int sharedFd;
     static void *sharedMapBase;
     static const ItemType *sharedMapData;
     static size_t sharedMapBytes;
@@ -648,89 +662,76 @@ private:
     static long sharedNumItemsInFile;
 };
 
+// Static members initialization.
 template <class ItemType>
-std::atomic<bool> ThreadsIO<ItemType>::openFlag{false};
+std::atomic<bool> ThreadReader<ItemType>::openFlag{false};
 
 template <class ItemType>
-std::atomic<int> ThreadsIO<ItemType>::remainingUsers{0};
+std::atomic<int> ThreadReader<ItemType>::remainingUsers{0};
 
 template <class ItemType>
-int ThreadsIO<ItemType>::sharedFileDescriptor{-1};
+int ThreadReader<ItemType>::sharedFd{-1};
 
 template <class ItemType>
-void *ThreadsIO<ItemType>::sharedMapBase{nullptr};
+void *ThreadReader<ItemType>::sharedMapBase{nullptr};
 
 template <class ItemType>
-const ItemType *ThreadsIO<ItemType>::sharedMapData{nullptr};
+const ItemType *ThreadReader<ItemType>::sharedMapData{nullptr};
 
 template <class ItemType>
-size_t ThreadsIO<ItemType>::sharedMapBytes{0};
+size_t ThreadReader<ItemType>::sharedMapBytes{0};
 
 template <class ItemType>
-long ThreadsIO<ItemType>::sharedFileSize{0};
+long ThreadReader<ItemType>::sharedFileSize{0};
 
 template <class ItemType>
-long ThreadsIO<ItemType>::sharedNumItemsInFile{0};
+long ThreadReader<ItemType>::sharedNumItemsInFile{0};
 
-/* ThreadsIO constructor
+/* ThreadReader constructor
  * @param: fileName, a string
  * @param: id, an int
  * @param: numThreads, an int
- * @param: openMode, an int
- *          (e.g. O_RDONLY for readers,
- *           O_WRONLY | O_CREAT | O_TRUNC for writers).
- * Precondition : fileName is the name of the file containing binary-format
- * values of type ItemType.
- *          &&  id is the thread id
- *          &&  numThreads is the number of threads
- *          &&  openMode holds valid POSIX open mode flags. (e.g. O_RDONLY for
- * readers) Postcondition: the file is open read-only, its size and item count
- * have been recorded, and fileDescriptor is valid.
+ * Precondition: fileName is the name of an existing binary file
+ *                containing values of type ItemType
+ *           &&  id is this thread's id
+ *           &&  numThreads is the total number of threads.
+ * Postcondition: thread 0 has opened and mmap()ed the file read-only;
+ *           &&  all other threads have waited until the mapping is ready;
+ *           &&  this object's file-size and item-count fields have been set.
  */
 template <class ItemType>
-ThreadsIO<ItemType>::ThreadsIO(const std::string &fileName, int id,
-                               int num_threads, int openMode)
-    : OO_IO_Base<ItemType>(fileName, id, num_threads)
+ThreadReader<ItemType>::ThreadReader(const std::string &fileName, int id,
+                                     int num_threads)
+    : ThreadsIO<ItemType>(fileName, id, num_threads)
 {
     if (id == 0)
     {
-        sharedFileDescriptor = open(fileName.c_str(), openMode, 0644);
+        sharedFd = open(fileName.c_str(), O_RDONLY);
 
-        if (sharedFileDescriptor == -1)
+        if (sharedFd == -1)
         {
             perror("open");
             exit(EXIT_FAILURE);
         }
 
         struct stat fileInfo;
-        if (fstat(sharedFileDescriptor, &fileInfo) == -1)
+        if (fstat(sharedFd, &fileInfo) == -1)
         {
             perror("fstat");
+            close(sharedFd);
+            sharedFd = -1;
             exit(EXIT_FAILURE);
         }
 
         sharedFileSize = static_cast<long>(fileInfo.st_size);
-        sharedNumItemsInFile =
-            sharedFileSize / OO_IO_Base<ItemType>::getItemSize();
+        sharedNumItemsInFile = sharedFileSize / OO_IO_Base<ItemType>::getItemSize();
 
-        // Only readers should mmap. ThreadWriter still needs the shared fd
-        // for pwrite(), but it should not mmap an O_WRONLY file.
-        if (openMode == O_RDONLY)
-        {
-            mapWholeFile();
-        }
-        else
-        {
-            sharedMapBase = nullptr;
-            sharedMapData = nullptr;
-            sharedMapBytes = 0;
-        }
+        mapWholeFile();
 
-        // Track how many thread objects use the shared file mapping.
-        // The last thread object will close and unmap the file.
+        // Track how many ThreadReader objects use the shared mapping.
         remainingUsers.store(num_threads, std::memory_order_release);
 
-        // Wake up the other threads now that open(), fstat(), and mmap() are done.
+        // Wake up the other thread objects.
         openFlag.store(true, std::memory_order_release);
         openFlag.notify_all();
     }
@@ -742,9 +743,8 @@ ThreadsIO<ItemType>::ThreadsIO(const std::string &fileName, int id,
 
     OO_IO_Base<ItemType>::setFileSize(sharedFileSize);
     OO_IO_Base<ItemType>::setNumItemsInFile(sharedNumItemsInFile);
-    OO_IO_Base<ItemType>::setFileOpened(sharedFileDescriptor != -1);
+    OO_IO_Base<ItemType>::setFileOpened(sharedFd != -1);
 }
-
 /* mapWholeFile(): mmap the entire file read-only, starting at offset 0.
  *  Offset 0 is page-aligned, so each thread's chunk is just an offset into
  *  the base pointer -- no per-chunk mmap-offset alignment is needed.
@@ -753,7 +753,7 @@ ThreadsIO<ItemType>::ThreadsIO(const std::string &fileName, int id,
  *  null/zero and reads return empty spans.
  */
 template <class ItemType>
-void ThreadsIO<ItemType>::mapWholeFile()
+void ThreadReader<ItemType>::mapWholeFile()
 {
     if (sharedFileSize <= 0)
     {
@@ -769,81 +769,33 @@ void ThreadsIO<ItemType>::mapWholeFile()
                       sharedMapBytes,
                       PROT_READ,
                       MAP_PRIVATE,
-                      sharedFileDescriptor,
+                      sharedFd,
                       0);
 
     if (base == MAP_FAILED)
     {
         perror("mmap");
+        close(sharedFd);
+        sharedFd = -1;
         exit(EXIT_FAILURE);
     }
 
     sharedMapBase = base;
     sharedMapData = reinterpret_cast<const ItemType *>(base);
 
-    // Optional tuning:
-    // #ifdef MADV_SEQUENTIAL
-    //     madvise(base, sharedMapBytes, MADV_SEQUENTIAL);
-    // #endif
+    // Optional tuning: tell the OS that this mapping will likely be
+    // accessed sequentially, which may improve read-ahead behavior for large files.
+#ifdef MADV_SEQUENTIAL
+    madvise(base, sharedMapBytes, MADV_SEQUENTIAL);
+#endif
 }
 
-/* ThreadsIO destructor: closes the shared descriptor if it is open, and unmaps the shared memory if it was mapped */
-template <class ItemType>
-ThreadsIO<ItemType>::~ThreadsIO()
-{
-    int oldRemaining = remainingUsers.fetch_sub(1, std::memory_order_acq_rel);
-
-    // The last thread object cleans up the shared resources.
-    if (oldRemaining == 1)
-    {
-        if (sharedMapBase != nullptr)
-        {
-            munmap(sharedMapBase, sharedMapBytes);
-        }
-
-        if (sharedFileDescriptor != -1)
-        {
-            close(sharedFileDescriptor);
-        }
-
-        sharedFileDescriptor = -1;
-        sharedMapBase = nullptr;
-        sharedMapData = nullptr;
-        sharedMapBytes = 0;
-        sharedFileSize = 0;
-        sharedNumItemsInFile = 0;
-
-        // Reset so a later read/write operation can initialize again.
-        openFlag.store(false, std::memory_order_release);
-    }
-}
-
-/********************************************************************
- * The ThreadReader template provides an abstraction to hide the details of
- * threads parallel input.
- *
- * readChunk() works entirely in
- *  locals and reads through pread(), which takes an explicit offset and
- *  so is safe to call concurrently on one shared descriptor.  This is what
- *  makes the thread backends data-race-free.
- ********************************************************************/
-template <class ItemType>
-class ThreadReader : public ThreadsIO<ItemType>
-{
-public:
-    ThreadReader(const std::string &fileName, int id, int num_threads);
-    std::span<const ItemType> readChunk();
-    std::span<const ItemType> readChunkPlus(unsigned numExtras);
-};
-
-/* ThreadReader constructor: see ThreadsIO Constructor. */
-template <class ItemType>
-ThreadReader<ItemType>::ThreadReader(const std::string &fileName, int id,
-                                     int num_threads)
-    : ThreadsIO<ItemType>(fileName, id, num_threads, O_RDONLY) {}
-
-/* Reads the chunk belonging to one worker thread.
- * Return: a vector containing the values of this PE's chunk.
+/* readChunk()
+ * Return: a std::span over the values in this thread's chunk.
+ * Postcondition: this object's chunk size, first item offset, and first byte
+ *                offset have been recorded.
+ * Note: the returned span is a view into the mmap()ed file; it does not own
+ *       the data and must not outlive the shared mapping.
  */
 template <class ItemType>
 std::span<const ItemType> ThreadReader<ItemType>::readChunk()
@@ -861,7 +813,7 @@ std::span<const ItemType> ThreadReader<ItemType>::readChunk()
 
     getChunkStartStopValues(OO_IO_Base<ItemType>::getID(),
                             OO_IO_Base<ItemType>::getNumPEs(),
-                            OO_IO_Base<ItemType>::getNumItemsInFile(),
+                            numItemsInFile,
                             start, stop);
 
     long chunkSize = stop - start;
@@ -869,13 +821,13 @@ std::span<const ItemType> ThreadReader<ItemType>::readChunk()
     OO_IO_Base<ItemType>::setFirstItemOffset(start);
     OO_IO_Base<ItemType>::setFirstByteOffset(start * OO_IO_Base<ItemType>::getItemSize());
 
-    if ((this->getMapData() == nullptr) || chunkSize <= 0)
+    if (sharedMapData == nullptr || chunkSize <= 0)
     {
         return std::span<const ItemType>(); // empty view
     }
 
     return std::span<const ItemType>(
-        this->getMapData() + start,
+        sharedMapData + start,
         static_cast<size_t>(chunkSize));
 }
 
@@ -886,7 +838,7 @@ std::span<const ItemType> ThreadReader<ItemType>::readChunk()
  * @param: numExtras, an unsigned.
  * Precondition: numExtras is the number of additional Items to be read
  *                beyond the end of this thread's chunk.
- * Return: a vector containing the values of this thread's chunk
+ * Return: a std::span viewing the values of this thread's chunk
  *          plus numExtras values of the next thread's chunk
  *          for all threads except the last one.
  *
@@ -899,9 +851,6 @@ template <class ItemType>
 std::span<const ItemType>
 ThreadReader<ItemType>::readChunkPlus(unsigned numExtras)
 {
-    // Note: the file's size and item count were already recorded by the
-    //  ThreadsIO constructor (via fstat), so unlike the MPI version we
-    //  do not re-stat the file here.
     long numItemsInFile = OO_IO_Base<ItemType>::getNumItemsInFile();
 
     if (numItemsInFile <= 0)
@@ -911,39 +860,72 @@ ThreadReader<ItemType>::readChunkPlus(unsigned numExtras)
         OO_IO_Base<ItemType>::setFirstByteOffset(0);
         return std::span<const ItemType>();
     }
+
     long start = 0, stop = 0;
+
     int id = OO_IO_Base<ItemType>::getID();
     int numPEs = OO_IO_Base<ItemType>::getNumPEs();
 
     getChunkStartStopValues(id, numPEs, numItemsInFile, start, stop);
 
-    // Extend this thread's chunk by numExtras Items, except for the last
-    //  thread, then clamp so we never read past the end of the file.
-    if (id < numPEs - 1)
-    {
-        stop += numExtras;
-    }
-    if (stop > numItemsInFile)
-    {
-        stop = numItemsInFile;
-    }
+    if (id < numPEs - 1) { stop += numExtras; }
+
+    if (stop > numItemsInFile) { stop = numItemsInFile; }
 
     long chunkSize = stop - start;
+
     OO_IO_Base<ItemType>::setChunkSize(chunkSize);
     OO_IO_Base<ItemType>::setFirstItemOffset(start);
-    OO_IO_Base<
-        ItemType>::setFirstByteOffset(start * OO_IO_Base<ItemType>::getItemSize());
+    OO_IO_Base<ItemType>::setFirstByteOffset( start * OO_IO_Base<ItemType>::getItemSize());
 
-    if ((this->getMapData() == nullptr) || chunkSize <= 0)
+    if (sharedMapData == nullptr || chunkSize <= 0)
     {
-        return std::span<const ItemType>(); // empty view
+        return std::span<const ItemType>();
     }
 
-    return std::span<const ItemType>(
-        this->getMapData() + start,
-        static_cast<size_t>(chunkSize));
+    return std::span<const ItemType>( sharedMapData + start, static_cast<size_t>(chunkSize));
 }
 
+/* ThreadReader destructor.
+ * Postcondition: If this is the last ThreadReader, the mapped file has been
+ *                unmapped, the file descriptor has been closed, and the
+ *                shared state has been reset.
+ */
+template <class ItemType>
+ThreadReader<ItemType>::~ThreadReader()
+{
+    int oldRemaining = remainingUsers.fetch_sub(1, std::memory_order_acq_rel);
+
+    // The last ThreadReader object cleans up the shared resources.
+    if (oldRemaining == 1)
+    {
+        if (sharedMapBase != nullptr)
+        {
+            if (munmap(sharedMapBase, sharedMapBytes) == -1)
+            {
+                perror("munmap");
+            }
+        }
+
+        if (sharedFd != -1)
+        {
+            if (close(sharedFd) == -1)
+            {
+                perror("close");
+            }
+        }
+
+        sharedFd = -1;
+        sharedMapBase = nullptr;
+        sharedMapData = nullptr;
+        sharedMapBytes = 0;
+        sharedFileSize = 0;
+        sharedNumItemsInFile = 0;
+
+        // Allow a later ThreadReader operation to initialize again.
+        openFlag.store(false, std::memory_order_release);
+    }
+}
 /********************************************************************
  * ThreadWriter writes binary data to a file in parallel using
  * multiple threads (shared-memory).
@@ -958,62 +940,159 @@ template <class ItemType>
 class ThreadWriter : public ThreadsIO<ItemType>
 {
 public:
-    ThreadWriter(const std::string &fileName, int id, int num_threads, long fileSize);
+    ThreadWriter(const std::string &fileName, int id,
+                 int num_threads, long fileSize);
+
     void writeChunk(const std::span<const ItemType> &v);
+
+    virtual ~ThreadWriter();
+
+private:
+    ItemType *getMapData() const { return sharedMapData; }
+
+    static std::atomic<bool> openFlag;
+    static std::atomic<int> remainingUsers;
+
+    static int sharedFd;
+    static void *sharedMapBase;
+    static ItemType *sharedMapData;
+    static size_t sharedMapBytes;
+    static long sharedFileSize;
 };
 
-/* ThreadWriter constructor
- * @param: fileName, a string
- * @param: id, an int
- * @param: numThreads, an int
- * @param: fileSize, an int
- * Precondition : fileName is the name of the file containing binary-format
- * values of type ItemType.
- *          &&  id is the thread id
- *          &&  numThreads is the number of threads
- *          &&  fileSize is the size of the file read in bytes
+// Static member initialization
+template <class ItemType>
+std::atomic<bool> ThreadWriter<ItemType>::openFlag{false};
+
+template <class ItemType>
+std::atomic<int> ThreadWriter<ItemType>::remainingUsers{0};
+
+template <class ItemType>
+int ThreadWriter<ItemType>::sharedFd{-1};
+
+template <class ItemType>
+void *ThreadWriter<ItemType>::sharedMapBase{nullptr};
+
+template <class ItemType>
+ItemType *ThreadWriter<ItemType>::sharedMapData{nullptr};
+
+template <class ItemType>
+size_t ThreadWriter<ItemType>::sharedMapBytes{0};
+
+template <class ItemType>
+long ThreadWriter<ItemType>::sharedFileSize{0};
+
+/* ThreadWriter constructor.
+ * @param: fileName, a string.
+ * @param: id, an int.
+ * @param: num_threads, an int.
+ * @param: fileSize, a long.
+ * Precondition: fileName is the name of the output file
+ *            && id is this thread's id
+ *            && num_threads is the number of threads
+ *            && fileSize is the final file size, in bytes.
+ * Postcondition: thread 0 has created, sized, and mapped the output file
+ *             && the other threads have waited until the mapping is ready
+ *             && the shared file information has been recorded.
  */
 template <class ItemType>
 ThreadWriter<ItemType>::ThreadWriter(const std::string &fileName, int id,
                                      int num_threads, long fileSize)
-    : ThreadsIO<ItemType>(fileName, id, num_threads, O_WRONLY | O_CREAT | O_TRUNC)
+    : ThreadsIO<ItemType>(fileName, id, num_threads)
 {
-    OO_IO_Base<ItemType>::setFileSize(fileSize);
+    if (id == 0)
+    {
+        sharedFd = open(fileName.c_str(),
+                        O_RDWR | O_CREAT | O_TRUNC,
+                        0644);
+
+        if (sharedFd == -1)
+        {
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+
+        sharedFileSize = fileSize;
+        sharedMapBytes = static_cast<size_t>(fileSize);
+
+        // The file must be resized before mmap() can safely write to it.
+        if (ftruncate(sharedFd, fileSize) == -1)
+        {
+            perror("ftruncate");
+            close(sharedFd);
+            sharedFd = -1;
+            exit(EXIT_FAILURE);
+        }
+
+        if (fileSize > 0)
+        {
+            sharedMapBase = mmap(nullptr,
+                                 sharedMapBytes,
+                                 PROT_READ | PROT_WRITE,
+                                 MAP_SHARED,
+                                 sharedFd,
+                                 0);
+
+            if (sharedMapBase == MAP_FAILED)
+            {
+                perror("mmap");
+                close(sharedFd);
+                sharedFd = -1;
+                sharedMapBase = nullptr;
+                exit(EXIT_FAILURE);
+            }
+
+            sharedMapData = reinterpret_cast<ItemType *>(sharedMapBase);
+        }
+        else
+        {
+            sharedMapBase = nullptr;
+            sharedMapData = nullptr;
+            sharedMapBytes = 0;
+        }
+
+        remainingUsers.store(num_threads, std::memory_order_release);
+
+        // Mark the shared mapping as ready, then wake the other threads.
+        openFlag.store(true, std::memory_order_release);
+        openFlag.notify_all();
+    }
+    else
+    {
+        // Wait until thread 0 finishes open(), ftruncate(), and mmap().
+        openFlag.wait(false, std::memory_order_acquire);
+    }
+
+    OO_IO_Base<ItemType>::setFileSize(sharedFileSize);
+    OO_IO_Base<ItemType>::setNumItemsInFile(sharedFileSize / sizeof(ItemType));
+    OO_IO_Base<ItemType>::setFileOpened(sharedFd != -1);
 }
-
-/* method to write this thread's chunk to the file
- * @param: v, a vector of Items
- * Precondition: v contains the Items assigned to this thread
- *            && all threads collectively hold the full dataset
- *            && threads cooperate so their chunks do not overlap
- * Postcondition: v's values have been written to the file
- *                at the correct offset for this thread
- *             && the full dataset has been written without gaps or overlap
- *
- *       pwrite() is used so each thread writes directly to its
- *       assigned file position without interfering with others.
+/* writeChunk() writes this thread's chunk to the mapped output file.
+ * @param: v, a std::span containing this thread's Items.
+ * Precondition: v contains exactly the Items assigned to this thread
+ *            && the output file has been mapped into memory
+ *            && all threads write to non-overlapping chunks.
+ * Postcondition: v's values have been copied into this thread's assigned
+ *                portion of the mapped output file.
  */
-
 template <class ItemType>
 void ThreadWriter<ItemType>::writeChunk(const std::span<const ItemType> &v)
 {
-    // Total items in file (given by user via fileSize)
     long totalItems = OO_IO_Base<ItemType>::getFileSize() / sizeof(ItemType);
 
     OO_IO_Base<ItemType>::setNumItemsInFile(totalItems);
 
-    // Compute chunk boundaries
     long start = 0, stop = 0;
     getChunkStartStopValues(
         OO_IO_Base<ItemType>::getID(),
         OO_IO_Base<ItemType>::getNumPEs(),
         totalItems,
-        start, stop);
+        start,
+        stop);
 
     long expectedChunkSize = stop - start;
     long actualChunkSize = static_cast<long>(v.size());
 
-    // Safety check: ensure correct partitioning
     if (actualChunkSize != expectedChunkSize)
     {
         fprintf(stderr,
@@ -1028,32 +1107,66 @@ void ThreadWriter<ItemType>::writeChunk(const std::span<const ItemType> &v)
     OO_IO_Base<ItemType>::setFirstItemOffset(start);
     OO_IO_Base<ItemType>::setFirstByteOffset(start * sizeof(ItemType));
 
-    off_t byteOffset =
-        static_cast<off_t>(OO_IO_Base<ItemType>::getFirstByteOffset());
+    if (sharedMapData == nullptr && actualChunkSize > 0)
+    {
+        fprintf(stderr, "ThreadWriter::writeChunk(): output file is not mapped\n");
+        exit(EXIT_FAILURE);
+    }
 
     size_t bytesToWrite = actualChunkSize * sizeof(ItemType);
 
-    // Robust write loop (handles partial writes)
-    size_t totalWritten = 0;
-    const char *data = reinterpret_cast<const char *>(v.data()); // view data as raw bytes for pwrite.
+    // Copy this thread's data into its assigned part of the mapped file.
+    std::memcpy(sharedMapData + start, v.data(), bytesToWrite);
+}
 
-    while (totalWritten < bytesToWrite)
+/* ThreadWriter destructor.
+ * Postcondition: this ThreadWriter is no longer counted as a user of the
+ *                shared mapping.
+ *             && if this is the last ThreadWriter, the mapped file has been
+ *                synchronized, unmapped, closed, and the shared state reset.
+ */
+template <class ItemType>
+ThreadWriter<ItemType>::~ThreadWriter()
+{
+    int oldRemaining = remainingUsers.fetch_sub(1, std::memory_order_acq_rel);
+
+    // The last ThreadWriter object cleans up the shared resources.
+    if (oldRemaining == 1)
     {
-        ssize_t written = pwrite(
-            this->getFileDescriptor(),
-            data + totalWritten,
-            bytesToWrite - totalWritten,
-            byteOffset + totalWritten);
-
-        if (written <= 0)
+        if (sharedMapBase != nullptr)
         {
-            perror("pwrite");
-            exit(EXIT_FAILURE);
+            // Optional but useful: request that changes be flushed to disk.
+            if (msync(sharedMapBase, sharedMapBytes, MS_SYNC) == -1)
+            {
+                perror("msync");
+            }
+
+            if (munmap(sharedMapBase, sharedMapBytes) == -1)
+            {
+                perror("munmap");
+            }
         }
 
-        totalWritten += written;
+        if (sharedFd != -1)
+        {
+            if (close(sharedFd) == -1)
+            {
+                perror("close");
+            }
+        }
+
+        sharedFd = -1;
+        sharedMapBase = nullptr;
+        sharedMapData = nullptr;
+        sharedMapBytes = 0;
+        sharedFileSize = 0;
+
+        // Allow a later ThreadWriter operation to initialize again.
+        openFlag.store(false, std::memory_order_release);
     }
 }
+
+
 
 /**                          HELPER UTILITIES
  * -------------------------------------------------------------------------
