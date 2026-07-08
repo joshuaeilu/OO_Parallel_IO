@@ -32,8 +32,7 @@ private:
 };
 
 DoubleWriterTester::DoubleWriterTester()
-{
-}
+{}
 
 template <typename WriterType>
 void DoubleWriterTester::runTests(WriterType &writer)
@@ -102,26 +101,13 @@ void DoubleWriterTester::
 
 #pragma omp barrier
 
-  // ThreadReader<double> tReader(
-  //     "./files/6doubles.bin",
-  //     id,
-  //     numProcs);
+  ThreadReader<double> tReader(
+      "./files/6doubles.bin",
+      id,
+      numProcs);
 
-  // vector<double> v2 = tReader.readChunk();
+  std::span<const double> v2 = tReader.readChunk();
 
-  vector<double> v2(chunkSize);
-
-  ifstream fin("./files/6doubles.bin", ios::binary);
-  assert(fin.is_open());
-
-  fin.seekg(start * sizeof(double), ios::beg);
-
-  fin.read(reinterpret_cast<char *>(v2.data()),
-           chunkSize * sizeof(double));
-
-  assert(fin.gcount() == static_cast<std::streamsize>(chunkSize * sizeof(double)));
-
-  fin.close();
 
   assert(v2.size() == v1.size());
   for (int i = 0; i < v2.size(); ++i)

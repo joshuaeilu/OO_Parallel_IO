@@ -48,8 +48,8 @@
 #include <unistd.h>   // close()
 #include <sys/stat.h> // fstat()
 #include <chrono>
-#include <atomic>     // std::atomic
-#include <cstring>    // std::memcpy
+#include <atomic>  // std::atomic
+#include <cstring> // std::memcpy
 
 /* Helper function declarations.
  * The definitions appear later in this file.
@@ -642,10 +642,13 @@ public:
     const ItemType *getMapData() const { return sharedMapData; }
     size_t getMapBytes() const { return sharedMapBytes; }
 
+    void close();
     virtual ~ThreadReader();
 
 private:
     void mapWholeFile();
+
+    bool isClosed; // prevents this object from closing twice
 
     // Initialization synchronization.
     static std::atomic<bool> openFlag;
@@ -704,6 +707,7 @@ ThreadReader<ItemType>::ThreadReader(const std::string &fileName, int id,
                                      int num_threads)
     : ThreadsIO<ItemType>(fileName, id, num_threads)
 {
+    isClosed = false;
     if (id == 0)
     {
         sharedFd = open(fileName.c_str(), O_RDONLY);
@@ -718,7 +722,7 @@ ThreadReader<ItemType>::ThreadReader(const std::string &fileName, int id,
         if (fstat(sharedFd, &fileInfo) == -1)
         {
             perror("fstat");
-            close(sharedFd);
+            ::close(sharedFd);
             sharedFd = -1;
             exit(EXIT_FAILURE);
         }
@@ -775,7 +779,7 @@ void ThreadReader<ItemType>::mapWholeFile()
     if (base == MAP_FAILED)
     {
         perror("mmap");
-        close(sharedFd);
+        ::close(sharedFd);
         sharedFd = -1;
         exit(EXIT_FAILURE);
     }
@@ -868,32 +872,46 @@ ThreadReader<ItemType>::readChunkPlus(unsigned numExtras)
 
     getChunkStartStopValues(id, numPEs, numItemsInFile, start, stop);
 
-    if (id < numPEs - 1) { stop += numExtras; }
+    if (id < numPEs - 1)
+    {
+        stop += numExtras;
+    }
 
-    if (stop > numItemsInFile) { stop = numItemsInFile; }
+    if (stop > numItemsInFile)
+    {
+        stop = numItemsInFile;
+    }
 
     long chunkSize = stop - start;
 
     OO_IO_Base<ItemType>::setChunkSize(chunkSize);
     OO_IO_Base<ItemType>::setFirstItemOffset(start);
-    OO_IO_Base<ItemType>::setFirstByteOffset( start * OO_IO_Base<ItemType>::getItemSize());
+    OO_IO_Base<ItemType>::setFirstByteOffset(start * OO_IO_Base<ItemType>::getItemSize());
 
     if (sharedMapData == nullptr || chunkSize <= 0)
     {
         return std::span<const ItemType>();
     }
 
-    return std::span<const ItemType>( sharedMapData + start, static_cast<size_t>(chunkSize));
+    return std::span<const ItemType>(sharedMapData + start, static_cast<size_t>(chunkSize));
 }
 
-/* ThreadReader destructor.
+/*ThreadReader close
  * Postcondition: If this is the last ThreadReader, the mapped file has been
  *                unmapped, the file descriptor has been closed, and the
  *                shared state has been reset.
  */
+
 template <class ItemType>
-ThreadReader<ItemType>::~ThreadReader()
+void ThreadReader<ItemType>::close()
 {
+    if (isClosed)
+    {
+        return;
+    }
+
+    isClosed = true;
+
     int oldRemaining = remainingUsers.fetch_sub(1, std::memory_order_acq_rel);
 
     // The last ThreadReader object cleans up the shared resources.
@@ -909,7 +927,7 @@ ThreadReader<ItemType>::~ThreadReader()
 
         if (sharedFd != -1)
         {
-            if (close(sharedFd) == -1)
+            if (::close(sharedFd) == -1)
             {
                 perror("close");
             }
@@ -925,6 +943,16 @@ ThreadReader<ItemType>::~ThreadReader()
         // Allow a later ThreadReader operation to initialize again.
         openFlag.store(false, std::memory_order_release);
     }
+
+    OO_IO_Base<ItemType>::setFileOpened(false);
+}
+
+/* ThreadReader destructor.
+ */
+template <class ItemType>
+ThreadReader<ItemType>::~ThreadReader()
+{
+    close();
 }
 /********************************************************************
  * ThreadWriter writes binary data to a file in parallel using
@@ -945,10 +973,13 @@ public:
 
     void writeChunk(const std::span<const ItemType> &v);
 
+    void close();
     virtual ~ThreadWriter();
 
 private:
     ItemType *getMapData() const { return sharedMapData; }
+
+    bool isClosed; // prevents this object from closing twice
 
     static std::atomic<bool> openFlag;
     static std::atomic<int> remainingUsers;
@@ -1000,6 +1031,7 @@ ThreadWriter<ItemType>::ThreadWriter(const std::string &fileName, int id,
                                      int num_threads, long fileSize)
     : ThreadsIO<ItemType>(fileName, id, num_threads)
 {
+    isClosed = false;
     if (id == 0)
     {
         sharedFd = open(fileName.c_str(),
@@ -1019,7 +1051,7 @@ ThreadWriter<ItemType>::ThreadWriter(const std::string &fileName, int id,
         if (ftruncate(sharedFd, fileSize) == -1)
         {
             perror("ftruncate");
-            close(sharedFd);
+            ::close(sharedFd);
             sharedFd = -1;
             exit(EXIT_FAILURE);
         }
@@ -1036,7 +1068,7 @@ ThreadWriter<ItemType>::ThreadWriter(const std::string &fileName, int id,
             if (sharedMapBase == MAP_FAILED)
             {
                 perror("mmap");
-                close(sharedFd);
+                ::close(sharedFd);
                 sharedFd = -1;
                 sharedMapBase = nullptr;
                 exit(EXIT_FAILURE);
@@ -1119,15 +1151,16 @@ void ThreadWriter<ItemType>::writeChunk(const std::span<const ItemType> &v)
     std::memcpy(sharedMapData + start, v.data(), bytesToWrite);
 }
 
-/* ThreadWriter destructor.
- * Postcondition: this ThreadWriter is no longer counted as a user of the
- *                shared mapping.
- *             && if this is the last ThreadWriter, the mapped file has been
- *                synchronized, unmapped, closed, and the shared state reset.
- */
 template <class ItemType>
-ThreadWriter<ItemType>::~ThreadWriter()
+void ThreadWriter<ItemType>::close()
 {
+    if (isClosed)
+    {
+        return;
+    }
+
+    isClosed = true;
+
     int oldRemaining = remainingUsers.fetch_sub(1, std::memory_order_acq_rel);
 
     // The last ThreadWriter object cleans up the shared resources.
@@ -1135,7 +1168,7 @@ ThreadWriter<ItemType>::~ThreadWriter()
     {
         if (sharedMapBase != nullptr)
         {
-            // Optional but useful: request that changes be flushed to disk.
+            // Flush changes before unmapping and before a reader opens the file.
             if (msync(sharedMapBase, sharedMapBytes, MS_SYNC) == -1)
             {
                 perror("msync");
@@ -1149,7 +1182,7 @@ ThreadWriter<ItemType>::~ThreadWriter()
 
         if (sharedFd != -1)
         {
-            if (close(sharedFd) == -1)
+            if (::close(sharedFd) == -1)
             {
                 perror("close");
             }
@@ -1164,9 +1197,21 @@ ThreadWriter<ItemType>::~ThreadWriter()
         // Allow a later ThreadWriter operation to initialize again.
         openFlag.store(false, std::memory_order_release);
     }
+
+    OO_IO_Base<ItemType>::setFileOpened(false);
 }
 
-
+/* ThreadWriter destructor.
+ * Postcondition: this ThreadWriter is no longer counted as a user of the
+ *                shared mapping.
+ *             && if this is the last ThreadWriter, the mapped file has been
+ *                synchronized, unmapped, closed, and the shared state reset.
+ */
+template <class ItemType>
+ThreadWriter<ItemType>::~ThreadWriter()
+{
+    close();
+}
 
 /**                          HELPER UTILITIES
  * -------------------------------------------------------------------------
