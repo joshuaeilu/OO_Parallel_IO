@@ -625,6 +625,8 @@ public:
 
     size_t getMapBytes() const { return myMapBytes; }
 
+    void close();
+
     virtual ~ThreadsIO();
 
 protected:
@@ -739,18 +741,39 @@ void ThreadsIO<ItemType>::mapWholeFile()
     // #endif
 }
 
+template <class ItemType>
+void ThreadsIO<ItemType>::close()
+{
+    if (myMapBase != nullptr)
+    {
+        if (munmap(myMapBase, myMapBytes) == -1)
+        {
+            perror("munmap");
+        }
+
+        myMapBase = nullptr;
+        myMapData = nullptr;
+        myMapBytes = 0;
+    }
+
+    if (fileDescriptor != -1)
+    {
+        if (::close(fileDescriptor) == -1)
+        {
+            perror("close");
+        }
+
+        fileDescriptor = -1;
+    }
+
+    OO_IO_Base<ItemType>::setFileOpened(false);
+}
+
 /* ThreadsIO destructor: closes the shared descriptor if it is open, and unmaps the shared memory if it was mapped */
 template <class ItemType>
 ThreadsIO<ItemType>::~ThreadsIO()
 {
-    if (myMapBase != nullptr)
-    {
-        munmap(myMapBase, myMapBytes);
-    }
-    if (fileDescriptor != -1)
-    {
-        close(fileDescriptor);
-    }
+close();
 }
 
 /********************************************************************
