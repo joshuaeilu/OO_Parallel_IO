@@ -8,63 +8,49 @@ int main(int argc, char *argv[])
 {
     if (argc != 2)
     {
-        std::cerr << "Usage: "
-                  << argv[0]
-                  << " <binary-file>\n";
+        std::cerr << "Usage: " << argv[0] << " <binary-file>\n";
         return EXIT_FAILURE;
     }
 
     std::string fileName = argv[1];
 
-    Timer timer;
-    timer.start();
+    const int numRuns = 3;
+    const int numThreads = 12;
 
-    long long totalItems = 0;
-    double totalSum = 0.0;
-
-#pragma omp parallel reduction(+ : totalItems, totalSum)
+    for (int run = 1; run <= numRuns; ++run)
     {
-        int id = omp_get_thread_num();
-        int numThreads = omp_get_num_threads();
+        Timer timer;
+        long long totalItems = 0;
+        double totalSum = 0.0;
 
-        ThreadReader<double> reader(fileName, id, numThreads);
+        timer.start();
 
-        std::span<const double> chunk = reader.readChunk();
-
-        totalItems += static_cast<long long>(chunk.size());
-
-        // Actually read every value from the mapped file.
-        double localSum = 0.0;
-        for (double value : chunk)
+#pragma omp parallel num_threads(numThreads) reduction(+ : totalItems, totalSum)
         {
-            localSum += value;
+            int id = omp_get_thread_num();
+
+            ThreadReader<double> reader(fileName, id, numThreads);
+
+            std::span<const double> chunk = reader.readChunk();
+
+            totalItems += static_cast<long long>(chunk.size());
+
+            double localSum = 0.0;
+            for (double value : chunk)
+            {
+                localSum += value;
+            }
+
+            totalSum += localSum;
         }
 
-        totalSum += localSum;
+        timer.stop();
 
-#pragma omp critical
-        {
-            std::cout << "Thread "
-                      << id
-                      << " read "
-                      << chunk.size()
-                      << " doubles\n";
-        }
+        std::cout << "Run " << run << ":\n";
+        std::cout << "Total doubles read = " << totalItems << '\n';
+        std::cout << "Checksum = " << totalSum << '\n';
+        std::cout << "Elapsed time = " << timer.getTime() << " seconds\n\n";
     }
-
-    timer.stop();
-
-    std::cout << "\nTotal doubles read = "
-              << totalItems
-              << '\n';
-
-    std::cout << "Checksum = "
-              << totalSum
-              << '\n';
-
-    std::cout << "Elapsed time = "
-              << timer.getTime()
-              << " seconds\n";
 
     return EXIT_SUCCESS;
 }
