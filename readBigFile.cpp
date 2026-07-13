@@ -1,4 +1,4 @@
-#include "OO_IO.h"
+#include "OO_IO_2.h"
 
 #include <iostream>
 #include <fstream>
@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
     std::string fileName = argv[1];
 
     const int numRuns = 3;
-    const int numThreads = 4;
+    const int numThreads = 12;
 
     std::string resultsFileName = "readBigFileResults.tsv";
 
@@ -38,6 +38,16 @@ int main(int argc, char *argv[])
     {
         resultsFile << "Run\tThreads\tElapsedSeconds\n";
     }
+
+    resultsFile << "\nUsing OO_IO_2.h\n\n";
+
+    resultsFile << std::left
+              << std::setw(10) << "Run"
+              << std::setw(12) << "Threads"
+              << std::setw(20) << "ElapsedSeconds"
+              << '\n';
+
+    resultsFile << "------------------------------------------\n";
 
     for (int run = 1; run <= numRuns; ++run)
     {
