@@ -9,7 +9,7 @@
 #include <mpi.h>                   // MPI types
 #include <omp.h>
 #include <cassert>                 // assert()
-#include "../OO_IO.h"          // Reader
+#include "../OO_IO/include/MPIProcessesIO.h"          // Reader
 using namespace std;
 
 class DoubleReaderTester {
@@ -51,7 +51,6 @@ void DoubleReaderTester::
 runFileTests(const ReaderType &reader) {
    if (id == MASTER) cout << "- Running getter tests..." << flush;
    
-
    assert( reader.getID() == id );
    assert( reader.getNumPEs() == numProcs );
    assert( reader.getFileName() == "./files/5doubles.bin" );
@@ -206,7 +205,7 @@ runReadTests(ReaderType &reader) {
    
    if (id == MASTER) cout << "- Running read() tests... " << flush;
 
-   std::span<const double> v1 = reader.readChunk();
+   auto v1 = reader.readChunk();
 
    assert( reader.getFileSize() == 40 );         // 8 x 5
    assert( reader.getNumItemsInFile() == 5 );

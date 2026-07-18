@@ -1,0 +1,27 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+
+# --- K&R Brace Settings ---
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: false
+  AfterControlStatement: false
+  AfterEnum: false
+  AfterFunction: false
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  BeforeCatch: false
+  BeforeElse: false
+
+# --- Preservation Settings for Inline Accessors ---
+AllowShortBlocksOnASingleLine: true
+AllowShortFunctionsOnASingleLine: Inline
+MaxEmptyLinesToKeep: 1
+
+# --- Code Cleanup Rules ---
+IndentWidth: 4
+ColumnLimit: 95
+BreakTemplateDeclarations: Yes
+...
