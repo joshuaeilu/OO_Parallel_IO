@@ -1099,6 +1099,8 @@ ThreadWriter<ItemType>::ThreadWriter(const std::string &fileName, int id,
     OO_IO_Base<ItemType>::setNumItemsInFile(sharedFileSize / sizeof(ItemType));
     OO_IO_Base<ItemType>::setFileOpened(sharedFd != -1);
 }
+
+
 /* writeChunk() writes this thread's chunk to the mapped output file.
  * @param: v, a std::span containing this thread's Items.
  * Precondition: v contains exactly the Items assigned to this thread
