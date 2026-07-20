@@ -17,7 +17,6 @@
 #include <sys/stat.h> // fstat()
 #include <unistd.h>   // close(), ftruncate()
 
-
 /* ThreadIOMode identifies the kind of I/O operation performed by a ThreadsIO object */
 enum class ThreadIOMode { None, Read, Write };
 
@@ -333,7 +332,8 @@ std::span<const ItemType> ThreadReader<ItemType>::readChunk() {
         return std::span<const ItemType>(); // empty view
     }
 
-    return std::span<const ItemType>(this->sharedMapData + start, static_cast<size_t>(chunkSize));
+    return std::span<const ItemType>(this->sharedMapData + start,
+                                     static_cast<size_t>(chunkSize));
 }
 
 /* method to read a chunk from the file (in its entirety)
@@ -388,9 +388,9 @@ std::span<const ItemType> ThreadReader<ItemType>::readChunkPlus(unsigned numExtr
         return std::span<const ItemType>();
     }
 
-    return std::span<const ItemType>(this->sharedMapData + start, static_cast<size_t>(chunkSize));
+    return std::span<const ItemType>(this->sharedMapData + start,
+                                     static_cast<size_t>(chunkSize));
 }
-
 
 /********************************************************************
  * ThreadWriter writes binary data to a file in parallel using
@@ -410,7 +410,6 @@ class ThreadWriter : public ThreadsIO<ItemType> {
 
     ~ThreadWriter() override = default;
 };
-
 
 /* ThreadWriter constructor
  * @param: id, this thread's id
@@ -432,30 +431,21 @@ ThreadWriter<ItemType>::ThreadWriter(int id, int num_threads, long fileSize)
  *                portion of the mapped output file.
  */
 template <class ItemType>
-void ThreadWriter<ItemType>::writeChunk(const std::span<const ItemType> &v)
-{
+void ThreadWriter<ItemType>::writeChunk(const std::span<const ItemType> &v) {
     long totalItems = OO_IO_Base<ItemType>::getFileSize() / sizeof(ItemType);
 
     OO_IO_Base<ItemType>::setNumItemsInFile(totalItems);
 
     long start = 0, stop = 0;
-    getChunkStartStopValues(
-        OO_IO_Base<ItemType>::getID(),
-        OO_IO_Base<ItemType>::getNumPEs(),
-        totalItems,
-        start,
-        stop);
+    getChunkStartStopValues(OO_IO_Base<ItemType>::getID(), OO_IO_Base<ItemType>::getNumPEs(),
+                            totalItems, start, stop);
 
     long expectedChunkSize = stop - start;
     long actualChunkSize = static_cast<long>(v.size());
 
-    if (actualChunkSize != expectedChunkSize)
-    {
-        fprintf(stderr,
-                "Thread %d: chunk size mismatch (expected %ld, got %ld)\n",
-                OO_IO_Base<ItemType>::getID(),
-                expectedChunkSize,
-                actualChunkSize);
+    if (actualChunkSize != expectedChunkSize) {
+        fprintf(stderr, "Thread %d: chunk size mismatch (expected %ld, got %ld)\n",
+                OO_IO_Base<ItemType>::getID(), expectedChunkSize, actualChunkSize);
         exit(EXIT_FAILURE);
     }
 
@@ -463,8 +453,7 @@ void ThreadWriter<ItemType>::writeChunk(const std::span<const ItemType> &v)
     OO_IO_Base<ItemType>::setFirstItemOffset(start);
     OO_IO_Base<ItemType>::setFirstByteOffset(start * sizeof(ItemType));
 
-    if (this->sharedMapData == nullptr && actualChunkSize > 0)
-    {
+    if (this->sharedMapData == nullptr && actualChunkSize > 0) {
         fprintf(stderr, "ThreadWriter::writeChunk(): output file is not mapped\n");
         exit(EXIT_FAILURE);
     }
