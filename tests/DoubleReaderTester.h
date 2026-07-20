@@ -9,7 +9,7 @@
 #include <mpi.h>                   // MPI types
 #include <omp.h>
 #include <cassert>                 // assert()
-#include "../OO_IO/include/MPIProcessesIO.h"          // Reader
+#include "../OO_IO/include/ThreadsIO.h"          // Reader
 using namespace std;
 
 class DoubleReaderTester {

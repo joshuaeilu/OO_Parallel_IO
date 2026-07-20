@@ -8,6 +8,7 @@
 #include <fstream>                 // ifstream, ofstream, fstream
 #include <mpi.h>                   // MPI types
 #include "../OO_IO/include/MPIProcessesIO.h"          // ParallelWriter
+#include "../OO_IO/include/ThreadsIO.h"
 using namespace std;
 
 class CharWriterTester {
@@ -73,23 +74,23 @@ void CharWriterTester::runWriteTests(WriterType& writer) {
       cVal += 2;
    }
    writer.writeChunk(v1);
+   writer.close();
    
    assert( writer.getFileSize() == 6 );         // 1 x 6
    assert( writer.getNumItemsInFile() == 6 );
 
    #pragma omp barrier
 
-  ThreadReader<char> tReader(
-    "./files/6chars_output.bin",
-    id,
-    numProcs);
-   std::span<const char> v2 = tReader.readChunk();
+   ThreadReader<char> pReader(id, numProcs);
+   pReader.open("./files/6chars_output.bin");
+   auto v2 = pReader.readChunk();
 
 
    assert( v2.size() == v1.size() );
    for (int i = 0; i < v2.size(); ++i) {
       assert( v2[i] == v1[i] );
    }
+   pReader.close();
 
    if (id == MASTER) cout << " Passed!" << endl;
 }

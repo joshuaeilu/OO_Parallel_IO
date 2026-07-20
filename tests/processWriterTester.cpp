@@ -11,7 +11,7 @@
 
 #include "DoubleWriterTester.h"
 // #include "IntReaderTester.h"
-// #include "CharWriterTester.h"
+#include "CharWriterTester.h"
 
 int main(int argc, char** argv) {
    MPI_Init(&argc, &argv);
@@ -25,9 +25,11 @@ int main(int argc, char** argv) {
    IntWriterTester iwt;
    iwt.runTests();
 // */
-   // CharWriterTester cwt;
-   // MPIProcessWriter<char> writer2("./files/6chars_output.bin");
-   // cwt.runTests(writer2);
+   CharWriterTester cwt;
+   MPIProcessWriter<char> writer2;
+   writer2.open("./files/6chars_output.bin");
+   cwt.runTests(writer2);
+   writer2.close();
 
    MPI_Finalize();
 }

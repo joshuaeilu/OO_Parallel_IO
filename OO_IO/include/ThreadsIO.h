@@ -432,12 +432,12 @@ ThreadWriter<ItemType>::ThreadWriter(int id, int num_threads, long fileSize)
  */
 template <class ItemType>
 void ThreadWriter<ItemType>::writeChunk(const std::span<const ItemType> &v) {
-    long totalItems = OO_IO_Base<ItemType>::getFileSize() / sizeof(ItemType);
+    long totalItems = IO_Base<ItemType>::getFileSize() / sizeof(ItemType);
 
-    OO_IO_Base<ItemType>::setNumItemsInFile(totalItems);
+    IO_Base<ItemType>::setNumItemsInFile(totalItems);
 
     long start = 0, stop = 0;
-    getChunkStartStopValues(OO_IO_Base<ItemType>::getID(), OO_IO_Base<ItemType>::getNumPEs(),
+    getChunkStartStopValues(IO_Base<ItemType>::getID(), IO_Base<ItemType>::getNumPEs(),
                             totalItems, start, stop);
 
     long expectedChunkSize = stop - start;
@@ -445,13 +445,13 @@ void ThreadWriter<ItemType>::writeChunk(const std::span<const ItemType> &v) {
 
     if (actualChunkSize != expectedChunkSize) {
         fprintf(stderr, "Thread %d: chunk size mismatch (expected %ld, got %ld)\n",
-                OO_IO_Base<ItemType>::getID(), expectedChunkSize, actualChunkSize);
+                IO_Base<ItemType>::getID(), expectedChunkSize, actualChunkSize);
         exit(EXIT_FAILURE);
     }
 
-    OO_IO_Base<ItemType>::setChunkSize(actualChunkSize);
-    OO_IO_Base<ItemType>::setFirstItemOffset(start);
-    OO_IO_Base<ItemType>::setFirstByteOffset(start * sizeof(ItemType));
+    IO_Base<ItemType>::setChunkSize(actualChunkSize);
+    IO_Base<ItemType>::setFirstItemOffset(start);
+    IO_Base<ItemType>::setFirstByteOffset(start * sizeof(ItemType));
 
     if (this->sharedMapData == nullptr && actualChunkSize > 0) {
         fprintf(stderr, "ThreadWriter::writeChunk(): output file is not mapped\n");
