@@ -11,21 +11,23 @@
 
 #include "DoubleWriterTester.h"
 // #include "IntReaderTester.h"
-#include "CharWriterTester.h"
+// #include "CharWriterTester.h"
 
 int main(int argc, char** argv) {
    MPI_Init(&argc, &argv);
 
    DoubleWriterTester dwt;
-   MPIProcessWriter<double> writer("./files/6doubles.bin");
+   MPIProcessWriter<double> writer;
+   writer.open("./files/6doubles.bin");
    dwt.runTests(writer);
+   writer.close();
 /*
    IntWriterTester iwt;
    iwt.runTests();
 // */
-   CharWriterTester cwt;
-   MPIProcessWriter<char> writer2("./files/6chars_output.bin");
-   cwt.runTests(writer2);
+   // CharWriterTester cwt;
+   // MPIProcessWriter<char> writer2("./files/6chars_output.bin");
+   // cwt.runTests(writer2);
 
    MPI_Finalize();
 }

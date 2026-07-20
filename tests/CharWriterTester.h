@@ -7,7 +7,7 @@
 #include <iostream>                // cout, ...
 #include <fstream>                 // ifstream, ofstream, fstream
 #include <mpi.h>                   // MPI types
-#include "../OO_IO.h"          // ParallelWriter
+#include "../OO_IO/include/MPIProcessesIO.h"          // ParallelWriter
 using namespace std;
 
 class CharWriterTester {

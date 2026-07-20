@@ -8,7 +8,7 @@
 #include <fstream>    // ifstream, ofstream, fstream
 #include <mpi.h>      // MPI types
 #include <cassert>    // assert()
-#include "../OO_IO.h" // Reader, Writer
+#include "../OO_IO/include/MPIProcessesIO.h" // Reader, Writer
 using namespace std;
 
 class DoubleWriterTester
