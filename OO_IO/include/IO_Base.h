@@ -4,14 +4,14 @@
  *  @date:   Summer 2026
  */
 
-#ifndef OO_IO_IO_BASE_H
-#define OO_IO_IO_BASE_H
+#ifndef IO_BASE_H
+#define IO_BASE_H
 
 #include <chrono>  // std::chrono
 #include <cstdio>  // fprintf(), printf(), stderr
 #include <cstdlib> // exit(), EXIT_FAILURE
 #include <string>  // std::string
-#include <vector> // std::vector
+#include <vector>  // std::vector
 #include <climits> // INT_MAX
 #include <cstddef> // std::size_t
 
@@ -28,7 +28,7 @@ template <class ItemType> class IO_Base {
     IO_Base(int id, int numPEs);
     virtual ~IO_Base() = default;
 
-    virtual void open(const std::string &fileName) = 0;  // Open and close the corresponding
+    virtual void open(const std::string &fileName, int fileOpenMode) = 0;  // Open and close the corresponding
     virtual void close() = 0; // file for reading or writing.
 
     int getID()                    const { return myID; }

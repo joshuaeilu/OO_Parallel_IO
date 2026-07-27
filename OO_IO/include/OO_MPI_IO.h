@@ -1,12 +1,12 @@
-/* MPIProcessesIO.h conains the MPIProcessesIO class that supports
+/* OO_MPI_IO.h conains the OO_MPI_IO class that supports
  * parallel binary I/O using MPI-IO (processes).
  *
  * @author: Joshua Eilu for Professor Joel Adams at Calvin University.
  * @date:   Summer 2026
  */
 
-#ifndef OO_IO_MPI_PROCESS_IO_H
-#define OO_IO_MPI_PROCESS_IO_H
+#ifndef OO_MPI_IO_H
+#define OO_MPI_IO_H
 
 #include "IO_Base.h"
 #include <mpi.h>
@@ -18,61 +18,7 @@ template <typename T>
 inline MPI_Datatype mpiType();
 inline void checkResult(int result);
 
-/* ----------------------------------------------------------------------
- * MPI_Runtime: a single, process-wide MPI initializer/finalizer.
- *
- * MPI_Init() and MPI_Finalize() must each be called exactly once per
- *  process.  A function-local static object (see mpiRuntime() below)
- * is guaranteed by C++ to be constructed exactly once, which lets
- * this library manage MPI's lifetime without the user calling
- * MPI_Init() or MPI_Finalize() explicitly.
- * --------------------------------------------------------------------
- */
-class MPI_Runtime {
-  public:
-    MPI_Runtime() {
-        int initialized = 0;
-        MPI_Initialized(&initialized);
-
-        if (!initialized) {
-            // MPI Initialization
-            MPI_Init(nullptr, nullptr);
-            initializedMPI = true;
-        }
-
-        MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
-        MPI_Comm_size(MPI_COMM_WORLD, &numPEs);
-    }
-
-    ~MPI_Runtime() {
-        int finalized = 0;
-        MPI_Finalized(&finalized);
-
-        // Only finalize MPI if:
-        // 1. We initialized it, AND
-        // 2. It has not already been finalized.
-        if (initializedMPI && !finalized) {
-            // MPI Finalization
-            MPI_Finalize();
-        }
-    }
-
-    int getRank() const { return myRank; }
-    int getNumPEs() const { return numPEs; }
-
-  private:
-    bool initializedMPI = false; // tracks whether this object initialized MPI.
-    int myRank = 0;              // this process's MPI rank.
-    int numPEs = 1;              // total number of MPI processes.
-};
-
-// Ensures a single process-wide MPI runtime (init/finalize).
-inline MPI_Runtime &mpiRuntime() {
-    static MPI_Runtime instance;
-    return instance;
-}
-
-/* MPIProcessesIO is a templated base class that supports parallel
+/* OO_MPI_IO is a templated base class that supports parallel
  * binary I/O using MPI-IO (processes). It stores information about
  * the file and each PE’s chunk, and provides helper functions for
  * derived classes.
@@ -80,24 +26,27 @@ inline MPI_Runtime &mpiRuntime() {
  * It's subclasses are MPIProcessReader and MPIProcessWriter.
  */
 template <class ItemType>
-class MPIProcessesIO : public IO_Base<ItemType> {
+class OO_MPI_IO : public IO_Base<ItemType> {
   public:
-    MPIProcessesIO(int mpiMode);
-    virtual ~MPIProcessesIO() = default;
+    OO_MPI_IO(int id, int numPEs);
+    virtual ~OO_MPI_IO();
 
-    void open(const std::string &fileName) override; // open and close the corresponding
-    void close() override; // file for reading or writing using MPI-IO.
+    void open(const std::string &fileName,
+              int mpiMode) override; // open and close the corresponding
+    void close() override;                // file for reading or writing using MPI-IO.
 
     MPI_File &getFileHandle() { return myFileHandle; }
     MPI_Datatype getMPIType() const { return myMPIType; }
 
   private:
-    MPI_Datatype myMPIType; // the MPI equivalent of ItemType
-    MPI_File myFileHandle;  // MPI handle (MPI backend only)
-    int mpiMode;            // MPI file open mode (MPI backend only)
+    MPI_Datatype myMPIType;      // the MPI equivalent of ItemType
+    MPI_File myFileHandle;       // MPI handle (MPI backend only)
+    bool initializedMPI = false; // tracks whether this object initialized MPI.
+    // int mpiMode;                 // MPI file open mode (MPI backend only)
+    // removed as we now pass the mode directly to open()
 };
 
-/* MPIProcessesIO constructor
+/* OO_MPI_IO constructor
  * @param: mpiMode, an int
  * @param: mpiType, an MPI_Datatype
  * Precondition: fileName is the name of a file containing
@@ -107,13 +56,21 @@ class MPIProcessesIO : public IO_Base<ItemType> {
  *                  as appropriate for this PE using the file's info.
  */
 template <class ItemType>
-MPIProcessesIO<ItemType>::MPIProcessesIO(int mpiMode)
-    : IO_Base<ItemType>(mpiRuntime().getRank(), mpiRuntime().getNumPEs()),
-      myMPIType(mpiType<ItemType>()), myFileHandle(MPI_FILE_NULL), mpiMode(mpiMode) {}
+OO_MPI_IO<ItemType>::OO_MPI_IO(int id, int numPEs)
+    : IO_Base<ItemType>(id, numPEs), myMPIType(mpiType<ItemType>()), myFileHandle(MPI_FILE_NULL) {}
 
-/* MPIProcessesIO::open() opens the file for parallel input or output
+/* OO_MPI_IO destructor */
+template <class ItemType>
+OO_MPI_IO<ItemType>::~OO_MPI_IO() {
+    if (initializedMPI) {
+        MPI_Finalize();
+    }
+}
+
+/* OO_MPI_IO::open() opens the file for parallel input or output
  * using MPI-IO.
  * @param: fileName, a string
+ * @param: mpiMode, an int specifying the MPI file open mode.
  * Precondition: fileName is the name of a file containing
  * binary-format values of type ItemType. Postcondition: the file has
  * been opened for parallel input or output
@@ -121,27 +78,24 @@ MPIProcessesIO<ItemType>::MPIProcessesIO(int mpiMode)
  *                  as appropriate for this PE using the file's info.
  */
 template <class ItemType>
-void MPIProcessesIO<ItemType>::open(const std::string &fileName) {
+void OO_MPI_IO<ItemType>::open(const std::string &fileName, int mpiMode) {
     // Open the file for parallel input or output using MPI-IO
-    int result = MPI_File_open(MPI_COMM_WORLD, fileName.c_str(), mpiMode, MPI_INFO_NULL,
-                               &myFileHandle);
+    int result =
+        MPI_File_open(MPI_COMM_WORLD, fileName.c_str(), mpiMode, MPI_INFO_NULL, &myFileHandle);
     checkResult(result);
     IO_Base<ItemType>::setFileName(fileName);
     IO_Base<ItemType>::setFileOpened(true);
 }
 
-/* MPIProcessesIO::close() closes the file for parallel input or
+/* OO_MPI_IO::close() closes the file for parallel input or
  * output using MPI-IO. Precondition: the file has been opened for
  * parallel input or output Postcondition: the file has been closed
  * for parallel input or output
  */
-template <class ItemType>
-void MPIProcessesIO<ItemType>::close() {
 
-    if (!IO_Base<ItemType>::getFileOpened()) {
-        fprintf(stderr, "\nMPIProcessesIO::close(): file was not opened\n\n");
-        exit(EXIT_FAILURE);
-    }
+template <class ItemType>
+void OO_MPI_IO<ItemType>::close() {
+
     // Close the file for parallel input or output using MPI-IO
     int result = MPI_File_close(&myFileHandle);
     checkResult(result);
@@ -152,9 +106,10 @@ void MPIProcessesIO<ItemType>::close() {
  * details of MPI-IO parallel input.
  */
 template <class ItemType>
-class MPIProcessReader : public MPIProcessesIO<ItemType> {
+class MPIProcessReader : public OO_MPI_IO<ItemType> {
   public:
-    MPIProcessReader();
+    MPIProcessReader(int id, int numPEs);
+    MPIProcessReader(int id, int numPEs, const std::string &fileName);
     std::vector<ItemType> readChunk();
     std::vector<ItemType> readChunkPlus(unsigned numExtras);
     virtual ~MPIProcessReader() = default;
@@ -162,8 +117,18 @@ class MPIProcessReader : public MPIProcessesIO<ItemType> {
 
 /* MPIProcessReader Constructor */
 template <class ItemType>
-MPIProcessReader<ItemType>::MPIProcessReader()
-    : MPIProcessesIO<ItemType>(MPI_MODE_RDONLY) {}
+MPIProcessReader<ItemType>::MPIProcessReader(int id, int numPEs) : OO_MPI_IO<ItemType>(id, numPEs) {
+    IO_Base<ItemType>::setID(id);
+    IO_Base<ItemType>::setNumPEs(numPEs);
+}
+
+template <class ItemType>
+MPIProcessReader<ItemType>::MPIProcessReader(int id, int numPEs, const std::string &fileName)
+    : OO_MPI_IO<ItemType>(id, numPEs) {
+    IO_Base<ItemType>::setID(id);
+    IO_Base<ItemType>::setNumPEs(numPEs);
+    this->open(fileName, MPI_MODE_RDONLY);
+}
 
 /* method to read a chunk from the file (in its entirety).
  * Return: a vector containing the values of this PE's chunk.
@@ -201,18 +166,18 @@ std::vector<ItemType> MPIProcessReader<ItemType>::readChunk() {
     int readResult = 0;
     // handle very large files where chunkSize > INT_MAX
     while (itemsToRead > INT_MAX) {
-        readResult = MPI_File_read_at(
-            this->getFileHandle(), IO_Base<ItemType>::getFirstByteOffset() + itemsRead,
-            v.data() + itemsRead, INT_MAX, this->getMPIType(), &status);
+        readResult = MPI_File_read_at(this->getFileHandle(),
+                                      IO_Base<ItemType>::getFirstByteOffset() + itemsRead,
+                                      v.data() + itemsRead, INT_MAX, this->getMPIType(), &status);
         checkResult(readResult);
         itemsRead += INT_MAX;
         itemsToRead -= INT_MAX;
     }
     // read in remaining Items (or if itemsToRead <= INT_MAX
     // initially)
-    readResult = MPI_File_read_at(
-        this->getFileHandle(), IO_Base<ItemType>::getFirstByteOffset() + itemsRead,
-        v.data() + itemsRead, itemsToRead, this->getMPIType(), &status);
+    readResult =
+        MPI_File_read_at(this->getFileHandle(), IO_Base<ItemType>::getFirstByteOffset() + itemsRead,
+                         v.data() + itemsRead, itemsToRead, this->getMPIType(), &status);
     checkResult(readResult);
 
     return v;
@@ -272,18 +237,18 @@ std::vector<ItemType> MPIProcessReader<ItemType>::readChunkPlus(unsigned numExtr
     int readResult = 0;
     // handle very large files where chunkSize > INT_MAX
     while (itemsToRead > INT_MAX) {
-        readResult = MPI_File_read_at(
-            this->getFileHandle(), IO_Base<ItemType>::getFirstByteOffset() + itemsRead,
-            v.data() + itemsRead, INT_MAX, this->getMPIType(), &status);
+        readResult = MPI_File_read_at(this->getFileHandle(),
+                                      IO_Base<ItemType>::getFirstByteOffset() + itemsRead,
+                                      v.data() + itemsRead, INT_MAX, this->getMPIType(), &status);
         checkResult(readResult);
         itemsRead += INT_MAX;
         itemsToRead -= INT_MAX;
     }
     // read in remaining Items (or if itemsToRead <= INT_MAX
     // initially)
-    readResult = MPI_File_read_at(
-        this->getFileHandle(), IO_Base<ItemType>::getFirstByteOffset() + itemsRead,
-        v.data() + itemsRead, itemsToRead, this->getMPIType(), &status);
+    readResult =
+        MPI_File_read_at(this->getFileHandle(), IO_Base<ItemType>::getFirstByteOffset() + itemsRead,
+                         v.data() + itemsRead, itemsToRead, this->getMPIType(), &status);
     checkResult(readResult);
 
     return v;
@@ -293,17 +258,28 @@ std::vector<ItemType> MPIProcessReader<ItemType>::readChunkPlus(unsigned numExtr
  * details of MPI-IO parallel output.
  */
 template <class ItemType>
-class MPIProcessWriter : public MPIProcessesIO<ItemType> {
+class MPIProcessWriter : public OO_MPI_IO<ItemType> {
   public:
-    MPIProcessWriter();
+    MPIProcessWriter(int id, int numPEs);
+    MPIProcessWriter(int id, int numPEs, const std::string &fileName);
     void writeChunk(const std::vector<ItemType> &v);
     virtual ~MPIProcessWriter() = default;
 };
 
 /* MPIProcessWriter Constructor */
 template <class ItemType>
-MPIProcessWriter<ItemType>::MPIProcessWriter()
-    : MPIProcessesIO<ItemType>(MPI_MODE_WRONLY | MPI_MODE_CREATE) {}
+MPIProcessWriter<ItemType>::MPIProcessWriter(int id, int numPEs) : OO_MPI_IO<ItemType>(id, numPEs) {
+    IO_Base<ItemType>::setID(id);
+    IO_Base<ItemType>::setNumPEs(numPEs);
+}
+
+template <class ItemType>
+MPIProcessWriter<ItemType>::MPIProcessWriter(int id, int numPEs, const std::string &fileName)
+    : OO_MPI_IO<ItemType>(id, numPEs) {
+    IO_Base<ItemType>::setID(id);
+    IO_Base<ItemType>::setNumPEs(numPEs);
+    this->open(fileName, MPI_MODE_WRONLY | MPI_MODE_CREATE);
+}
 
 /* method to write this PE's chunk to the file
  * @param: v, a vector of Items.
@@ -327,8 +303,8 @@ void MPIProcessWriter<ItemType>::writeChunk(const std::vector<ItemType> &v) {
     long totalBytes = totalItems * itemSize;
     IO_Base<ItemType>::setFileSize(totalBytes);
     long start = 0, stop = 0;
-    getChunkStartStopValues(IO_Base<ItemType>::getID(), IO_Base<ItemType>::getNumPEs(),
-                            totalItems, start, stop);
+    getChunkStartStopValues(IO_Base<ItemType>::getID(), IO_Base<ItemType>::getNumPEs(), totalItems,
+                            start, stop);
 
     IO_Base<ItemType>::setFirstItemOffset(start);
     IO_Base<ItemType>::setFirstByteOffset(start * itemSize);
@@ -337,21 +313,20 @@ void MPIProcessWriter<ItemType>::writeChunk(const std::vector<ItemType> &v) {
     unsigned long itemsToWrite = chunkSize;
     int writeResult = 0;
     while (itemsToWrite > INT_MAX) {
-        writeResult = MPI_File_write_at(
-            this->getFileHandle(),
-            IO_Base<ItemType>::getFirstByteOffset() +
-                static_cast<MPI_Offset>(itemsWritten) * itemSize,
-            v.data() + itemsWritten, INT_MAX, this->getMPIType(), &status);
+        writeResult =
+            MPI_File_write_at(this->getFileHandle(),
+                              IO_Base<ItemType>::getFirstByteOffset() +
+                                  static_cast<MPI_Offset>(itemsWritten) * itemSize,
+                              v.data() + itemsWritten, INT_MAX, this->getMPIType(), &status);
         checkResult(writeResult);
         itemsWritten += INT_MAX;
         itemsToWrite -= INT_MAX;
     }
 
-    writeResult = MPI_File_write_at(this->getFileHandle(),
-                                    IO_Base<ItemType>::getFirstByteOffset() +
-                                        static_cast<MPI_Offset>(itemsWritten) * itemSize,
-                                    v.data() + itemsWritten, itemsToWrite,
-                                    this->getMPIType(), &status);
+    writeResult = MPI_File_write_at(
+        this->getFileHandle(),
+        IO_Base<ItemType>::getFirstByteOffset() + static_cast<MPI_Offset>(itemsWritten) * itemSize,
+        v.data() + itemsWritten, itemsToWrite, this->getMPIType(), &status);
     checkResult(writeResult);
 }
 
@@ -412,4 +387,4 @@ inline void checkResult(int result) {
     }
 }
 
-#endif // OO_IO_MPI_PROCESS_IO_H
+#endif // OO_MPI_IO_H
