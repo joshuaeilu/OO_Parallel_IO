@@ -33,7 +33,7 @@ class OO_MPI_IO : public IO_Base<ItemType> {
 
     void open(const std::string &fileName,
               int mpiMode) override; // open and close the corresponding
-    void close() override;                // file for reading or writing using MPI-IO.
+    void close() override;           // file for reading or writing using MPI-IO.
 
     MPI_File &getFileHandle() { return myFileHandle; }
     MPI_Datatype getMPIType() const { return myMPIType; }
@@ -150,6 +150,22 @@ std::vector<ItemType> MPIProcessReader<ItemType>::readChunk() {
     //      --fileSize;                                     // ignore
     //      EOF char
     //   }
+
+    if (fileSize == 0) {
+        IO_Base<ItemType>::setNumItemsInFile(0);
+        IO_Base<ItemType>::setChunkSize(0);
+        IO_Base<ItemType>::setFirstItemOffset(0);
+        IO_Base<ItemType>::setFirstByteOffset(0);
+
+        // Avoid printing the same message from every MPI process.
+        if (IO_Base<ItemType>::getID() == 0) {
+            std::cerr << "*** MPIProcessReader::readChunk(): file is empty: "
+                      << IO_Base<ItemType>::getFileName() << "\n";
+        }
+
+        return {};
+    }
+
     IO_Base<ItemType>::setNumItemsInFile(fileSize / IO_Base<ItemType>::getItemSize());
 
     long start = 0, stop = 0;

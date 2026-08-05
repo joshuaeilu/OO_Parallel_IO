@@ -17,7 +17,7 @@ int main(int argc, char **argv){
     // std::cout << "Rank " << rank << " read " << chunk.size() << " items." << std::endl;
     // reader.close();
 
-    MPIProcessReader<double> reader(rank, size, "data/3b-doubles.bin");
+    MPIProcessReader<double> reader(rank, size, "data/1b-dobles.bin");
     std::vector<double> chunk = reader.readChunk();
     std::cout << "Rank " << rank << " read " << chunk.size() << " items." << std::endl;
     reader.close();
