@@ -647,7 +647,7 @@ TEST_SUITE("Thread Writing Tests") {
                     ThreadTestInstance instance = setupThreadTestInstance();
                     for (int itemCount : itemCounts) {
                         if (itemCount < instance.numThreads) {
-                            continue;clear
+                            continue;
                         }
 
                         const std::string fileName =

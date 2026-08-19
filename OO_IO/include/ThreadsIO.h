@@ -10,8 +10,10 @@
 
 #include "IO_Base.h"
 #include <atomic>  // std::atomic
+#include <cstring> // std::memcpy
 #include <fcntl.h> // open(), O_RDONLY, O_RDWR, ...
 #include <span>    // std::span
+#include <stdexcept>
 #include <sys/mman.h> // mmap(), munmap(), msync()
 #include <sys/stat.h> // fstat()
 #include <unistd.h>   // close(), ftruncate()
