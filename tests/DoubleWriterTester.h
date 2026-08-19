@@ -8,7 +8,8 @@
 #include <fstream>    // ifstream, ofstream, fstream
 #include <mpi.h>      // MPI types
 #include <cassert>    // assert()
-#include "../OO_IO.h" // Reader, Writer
+#include "../OO_IO/include/MPIProcessesIO.h" // Reader, Writer
+#include "../OO_IO/include/ThreadsIO.h"
 using namespace std;
 
 class DoubleWriterTester
@@ -95,18 +96,16 @@ void DoubleWriterTester::
     dVal += 11.1;
   }
   writer.writeChunk(v1);
+  writer.close();
 
   assert(writer.getFileSize() == 48); // 8 x 6
   assert(writer.getNumItemsInFile() == 6);
 
 #pragma omp barrier
 
-  ThreadReader<double> tReader(
-      "./files/6doubles.bin",
-      id,
-      numProcs);
-
-  std::span<const double> v2 = tReader.readChunk();
+  ThreadReader<double> pReader(id, numProcs);
+  pReader.open("./files/6doubles.bin");
+  auto v2 = pReader.readChunk();
 
 
   assert(v2.size() == v1.size());
@@ -114,6 +113,7 @@ void DoubleWriterTester::
   {
     assert(v2[i] == v1[i]);
   }
+  pReader.close();
 
   if (id == MASTER)
     cout << " Passed!" << endl;

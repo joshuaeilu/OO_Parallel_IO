@@ -11,6 +11,7 @@
 #include "DoubleWriterTester.h"
 // #include "IntReaderTester.h"
 #include "CharWriterTester.h"
+#include "omp.h"
 
 int main() {
    const int DOUBLEFILESIZE = 6 * sizeof(double); // 6 doubles
@@ -19,12 +20,16 @@ int main() {
    #pragma omp parallel num_threads(2)
    {
         DoubleWriterTester dwt;
-        ThreadWriter<double> writer("./files/6doubles.bin", omp_get_thread_num(), omp_get_num_threads(), DOUBLEFILESIZE);
+        ThreadWriter<double> writer(omp_get_thread_num(), omp_get_num_threads(), DOUBLEFILESIZE);
+        writer.open("./files/6doubles.bin");
         dwt.runTests(writer);
+        writer.close();
 
         CharWriterTester cwt;
-        ThreadWriter<char> writer2("./files/6chars_output.bin", omp_get_thread_num(), omp_get_num_threads(), CHARFILESIZE);
+        ThreadWriter<char> writer2(omp_get_thread_num(), omp_get_num_threads(), CHARFILESIZE);
+        writer2.open("./files/6chars_output.bin");
         cwt.runTests(writer2);
+        writer2.close();
    }
 
 }

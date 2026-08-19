@@ -29,19 +29,23 @@ void* pthreadTests(void* arg)
     ThreadArgs* args = static_cast<ThreadArgs*>(arg);
 
     DoubleReaderTester drt;
-    ThreadReader<double> doubleReader("./files/5doubles.bin", args->id, args->numThreads);
-
+    ThreadReader<double> doubleReader(args->id, args->numThreads);
+    doubleReader.open("./files/5doubles.bin");
     drt.runTests(doubleReader);
+    doubleReader.close();
 
-    // IntReaderTester irt;
-    // ThreadReader<int> intReader("./files/12ints.bin", args->id, args->numThreads);
 
-    // irt.runTests(intReader);
+    IntReaderTester irt;
+    ThreadReader<int> intReader(args->id, args->numThreads);
+    intReader.open("./files/12ints.bin");
+    irt.runTests(intReader);
+    intReader.close();
 
-    // CharReaderTester crt;
-    // ThreadReader<char> charReader("./files/6chars.bin", args->id, args->numThreads);
-
-    // crt.runTests(charReader);
+    CharReaderTester crt;
+    ThreadReader<char> charReader(args->id, args->numThreads);
+    charReader.open("./files/6chars.bin");
+    crt.runTests(charReader);
+    charReader.close();
 
     return nullptr;
 }
@@ -54,24 +58,29 @@ void* pthreadTests(void* arg)
 void cppTests(int id, int numThreads)
 {
     DoubleReaderTester drt;
-    ThreadReader<double> doubleReader("./files/5doubles.bin", id, numThreads);
-
+    ThreadReader<double> doubleReader(id, numThreads);
+    doubleReader.open("./files/5doubles.bin");
     drt.runTests(doubleReader);
+    doubleReader.close();
+
+
 
     IntReaderTester irt;
-    ThreadReader<int> intReader("./files/12ints.bin", id, numThreads);
-
+    ThreadReader<int> intReader(id, numThreads);
+    intReader.open("./files/12ints.bin");
     irt.runTests(intReader);
+    intReader.close();
 
     CharReaderTester crt;
-    ThreadReader<char> charReader("./files/6chars.bin", id, numThreads);
-
+    ThreadReader<char> charReader(id, numThreads);
+    charReader.open("./files/6chars.bin");
     crt.runTests(charReader);
+    charReader.close();
 }
 
-// ======================================================
-// MAIN
-// ======================================================
+// // ======================================================
+// // MAIN
+// // ======================================================
 
 int main()
 {
@@ -84,20 +93,25 @@ int main()
 #pragma omp parallel num_threads(NUM_THREADS)
     {
         DoubleReaderTester drt;
-        ThreadReader<double> doubleReader("./files/5doubles.bin", omp_get_thread_num(), omp_get_num_threads());
-
+        ThreadReader<double> doubleReader( omp_get_thread_num(), omp_get_num_threads());
+        doubleReader.open("./files/5doubles.bin");
         drt.runTests(doubleReader);
+        doubleReader.close();
 
         IntReaderTester irt;
-        ThreadReader<int> intReader("./files/12ints.bin", omp_get_thread_num(), omp_get_num_threads());
-
+        ThreadReader<int> intReader(omp_get_thread_num(), omp_get_num_threads());
+        intReader.open("./files/12ints.bin");
         irt.runTests(intReader);
+        intReader.close();
 
         CharReaderTester crt;
-        ThreadReader<char> charReader("./files/6chars.bin", omp_get_thread_num(), omp_get_num_threads());
-
+        ThreadReader<char> charReader(omp_get_thread_num(), omp_get_num_threads());
+        charReader.open("./files/6chars.bin");
         crt.runTests(charReader);
+        charReader.close();
+
     }
+
     std::cout << "\nAll OPEN MP tests completed.\n";
 
     std::cout << "\n====================================\n";

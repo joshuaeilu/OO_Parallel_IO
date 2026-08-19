@@ -3,3 +3,7 @@ env/
 
 # Or, if you only want to ignore the large files
 env/huge_files/
+
+
+#Ignore data
+data/

@@ -18,16 +18,22 @@ int main(int argc, char **argv)
    MPI_Init(&argc, &argv);
 
    DoubleReaderTester drt;
-   MPIProcessReader<double> mpiDoubleReader("./files/5doubles.bin");
+   MPIProcessReader<double> mpiDoubleReader;
+   mpiDoubleReader.open("./files/5doubles.bin");
    drt.runTests(mpiDoubleReader);
+   mpiDoubleReader.close();
 
    IntReaderTester irt;
-   MPIProcessReader<int> mpiIntReader("./files/12ints.bin");
+   MPIProcessReader<int> mpiIntReader;
+   mpiIntReader.open("./files/12ints.bin");
    irt.runTests(mpiIntReader);
+   mpiIntReader.close();
 
    CharReaderTester crt;
-   MPIProcessReader<char> mpiCharReader("./files/6chars.bin");
+   MPIProcessReader<char> mpiCharReader;
+   mpiCharReader.open("./files/6chars.bin");
    crt.runTests(mpiCharReader);
+   mpiCharReader.close();
 
    MPI_Finalize();
 

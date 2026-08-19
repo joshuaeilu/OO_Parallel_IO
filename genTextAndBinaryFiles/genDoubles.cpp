@@ -1,82 +1,190 @@
-/* genDoubles.cpp generates N random binary double numbers
- * and writes them to two files: one binary, one text.
+/*
+ * genDoubles.cpp
  *
- * @author Joel Adams, for CS 374 at Calvin University.
+ * Generates N random binary double values in the range [0.0, 1.0)
+ * and writes them to a binary file.
  *
- * Usage: ./generate <N> <fileName>
+ * Usage:
+ *     ./generate <N> <fileName>
  *
- * The program will generate two files:
- *   <fileName>.bin (binary format) and 
- *   <fileName>.txt (text format).
+ * Example:
+ *     ./generate 3000000000 3b-doubles
+ *
+ * This creates:
+ *     3b-doubles.bin
+ *
+ * 3,000,000,000 doubles * 8 bytes = 24,000,000,000 bytes
  */
 
-#include <iostream>    // cout, cerr, fixed, showpoint, ...
-#include <iomanip>     // setprecision
-#include <fstream>     // ofstream, ifstream, ...
-#include <vector>      // vector
-#include <cassert>     // assert
-#include <random>      // random_device, ...
-#include <cstdlib>     // exit
-using namespace std;
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <limits>
+#include <random>
+#include <string>
+#include <vector>
 
-typedef double Item;
+using Item = double;
 
-vector<Item> generateData(unsigned numItems, Item lo, Item hi);
-
-int main(int argc, char** argv) {
-    const Item LOW = 0.0;
+int main(int argc, char* argv[])
+{
+    const Item LOW  = 0.0;
     const Item HIGH = 1.0;
 
-    if (argc != 3) {
-	cerr << "\nUsage: ./generate <N> <fileName>\n\n";
-	exit(1);
+    // Generate and write 1 million doubles at a time.
+    // This uses approximately 8 MB of RAM.
+    constexpr std::uint64_t CHUNK_SIZE = 1'000'000;
+
+    if (argc != 3)
+    {
+        std::cerr << "Usage: " << argv[0]
+                  << " <N> <fileName>\n";
+
+        return EXIT_FAILURE;
     }
 
-    unsigned numItems = atoi( argv[1] );
-    unsigned numBytes = numItems * sizeof(Item);
-    string txtFileName = string(argv[2]) + ".txt";
+    // Read N as a 64-bit unsigned integer.
+    std::uint64_t numItems;
 
-    ofstream fout(txtFileName.c_str());
-    assert( fout.is_open() );
-
-    vector<Item> data = generateData(numItems, LOW, HIGH);
-    cout << "\nNumbers generated:\n";
-    for (unsigned i = 0; i < data.size(); ++i) {
-	    cout << fixed << setprecision(15) << data[i] << '\n';
-	    fout << fixed << setprecision(15) << data[i] << '\n';
+    try
+    {
+        numItems = std::stoull(argv[1]);
     }
-    fout.close();
+    catch (const std::exception& e)
+    {
+        std::cerr << "Error: invalid number of items: "
+                  << argv[1] << '\n';
 
-    string binFileName = string(argv[2]) + ".bin";
-    fstream outFile = std::fstream(binFileName.c_str(),
-		                std::ios::out | std::ios::binary);
-    outFile.write((char*)(&(data[0])), numBytes);
+        return EXIT_FAILURE;
+    }
+
+    if (numItems == 0)
+    {
+        std::cerr << "Error: N must be greater than 0.\n";
+        return EXIT_FAILURE;
+    }
+
+    const std::string binFileName =
+        std::string(argv[2]) + ".bin";
+
+    std::ofstream outFile(
+        binFileName,
+        std::ios::out |
+        std::ios::binary |
+        std::ios::trunc
+    );
+
+    if (!outFile)
+    {
+        std::cerr << "Error: could not open '"
+                  << binFileName
+                  << "' for writing.\n";
+
+        return EXIT_FAILURE;
+    }
+
+    // Random-number generator.
+    std::random_device rd;
+    std::mt19937_64 generator(rd());
+
+    std::uniform_real_distribution<Item>
+        distribution(LOW, HIGH);
+
+    // Allocate only one chunk in memory.
+    std::vector<Item> buffer(CHUNK_SIZE);
+
+    std::uint64_t itemsWritten = 0;
+
+    while (itemsWritten < numItems)
+    {
+        // The final chunk may contain fewer than CHUNK_SIZE items.
+        const std::uint64_t itemsRemaining =
+            numItems - itemsWritten;
+
+        const std::uint64_t currentChunkSize =
+            std::min(CHUNK_SIZE, itemsRemaining);
+
+        // Generate the current chunk.
+        for (std::uint64_t i = 0;
+             i < currentChunkSize;
+             ++i)
+        {
+            buffer[i] = distribution(generator);
+        }
+
+        // Number of bytes in this chunk.
+        const std::streamsize bytesToWrite =
+            static_cast<std::streamsize>(
+                currentChunkSize * sizeof(Item)
+            );
+
+        // Write the chunk to the binary file.
+        outFile.write(
+            reinterpret_cast<const char*>(buffer.data()),
+            bytesToWrite
+        );
+
+        if (!outFile)
+        {
+            std::cerr
+                << "\nError: failed while writing to '"
+                << binFileName << "'.\n";
+
+            return EXIT_FAILURE;
+        }
+
+        itemsWritten += currentChunkSize;
+
+        // Print progress every 100 million doubles
+        // and when finished.
+        if (itemsWritten % 100'000'000 == 0 ||
+            itemsWritten == numItems)
+        {
+            const double percent =
+                100.0 *
+                static_cast<double>(itemsWritten) /
+                static_cast<double>(numItems);
+
+            std::cout
+                << "\rGenerated "
+                << itemsWritten
+                << " / "
+                << numItems
+                << " doubles ("
+                << std::fixed
+                << std::setprecision(1)
+                << percent
+                << "%)"
+                << std::flush;
+        }
+    }
+
     outFile.close();
-    cout << '\n' << data.size() << " numbers from range " 
-	 << LOW << " to " << HIGH 
-         << " written to '" 
-         << binFileName << "' (binary) and '"
-         << txtFileName << "' (txt).\n" << endl;
-}
 
-/* utility to generate a vector of pseudo-random numbers
- * @param: numDoubles, the number of desired numbers
- * @param: lo, the bottom of the range from which the numbers are selected
- * @param: hi, the top of the range from which the numbers are selected
- * PRE: numDoubles > 0 && lo < hi
- * @return: a vector of size numDoubles, containing pseudo-random numbers
- *           from the range lo..hi.
- */
-vector<double> generateData(unsigned numDoubles, double lo, double hi)
-{
-    vector<double> data(numDoubles);
-    random_device rd;  //Will be used to obtain a seed for the random number engine
-    mt19937 gen(rd()); //Standard mersenne_twister_engine seeded with rd()
-    uniform_real_distribution<> dis(lo, hi);
-    for (unsigned i = 0; i < numDoubles; ++i) {
-        // Use dis to transform the random unsigned int generated by gen into a
-        // double in [0.0..1.0). Each call to dis(gen) generates a new random double
-        data[i] = dis(gen);
+    if (!outFile)
+    {
+        std::cerr
+            << "\nError: failed to close file correctly.\n";
+
+        return EXIT_FAILURE;
     }
-    return data;
+
+    const std::uint64_t expectedBytes =
+        numItems * sizeof(Item);
+
+    std::cout
+        << "\n\nSuccessfully generated "
+        << numItems
+        << " doubles.\n"
+        << "Output file: "
+        << binFileName
+        << '\n'
+        << "Expected file size: "
+        << expectedBytes
+        << " bytes\n";
+
+    return EXIT_SUCCESS;
 }

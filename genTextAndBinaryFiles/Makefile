@@ -1,26 +1,43 @@
-PROG1     = genDoubles
-PROG2     = genInts
-PROG3     = genChars
-SRC1      = $(PROG1).cpp
-SRC2      = $(PROG2).cpp
-SRC3      = $(PROG3).cpp
-CC        = g++
-CFLAGS    = -ansi -pedantic -std=c++11
-LFLAGS1   = -o $(PROG1)
-LFLAGS2   = -o $(PROG2)
-LFLAGS3   = -o $(PROG3)
+PROGS        := genDoubles genInts genChars
+CXX          := g++
+CXXFLAGS     := -std=c++11 -pedantic -Wall -Wextra
 
-all: $(PROG1) $(PROG2) $(PROG3)
+ITEM_COUNTS  := 1 3 4 5 8 9
 
-$(PROG1): $(SRC1)
-	$(CC) $(CFLAGS) $(SRC1) $(LFLAGS1)
+# Assumes this generator folder is inside the tests folder,
+# next to tests/files.
+OUTPUT_DIR   := ../files
 
-$(PROG2): $(SRC2)
-	$(CC) $(CFLAGS) $(SRC2) $(LFLAGS2)
+.PHONY: all programs test-data clean clean-data
 
-$(PROG3): $(SRC3)
-	$(CC) $(CFLAGS) $(SRC3) $(LFLAGS3)
+all: programs test-data
+
+programs: $(PROGS)
+
+$(PROGS): %: %.cpp
+	$(CXX) $(CXXFLAGS) $< -o $@
+
+test-data: programs
+	mkdir -p $(OUTPUT_DIR)
+	@set -e; \
+	for count in $(ITEM_COUNTS); do \
+		echo "Generating $${count} doubles..."; \
+		./genDoubles $$count "$(OUTPUT_DIR)/$${count}doubles"; \
+		echo "Generating $${count} ints..."; \
+		./genInts $$count "$(OUTPUT_DIR)/$${count}ints"; \
+		echo "Generating $${count} chars..."; \
+		./genChars $$count "$(OUTPUT_DIR)/$${count}chars"; \
+	done
 
 clean:
-	rm -f $(PROG1) $(PROG2) $(PROG3) *.o *~ *#
+	rm -f $(PROGS) *.o *~ *#
 
+clean-data:
+	@for count in $(ITEM_COUNTS); do \
+		rm -f "$(OUTPUT_DIR)/$${count}doubles.bin"; \
+		rm -f "$(OUTPUT_DIR)/$${count}doubles.txt"; \
+		rm -f "$(OUTPUT_DIR)/$${count}ints.bin"; \
+		rm -f "$(OUTPUT_DIR)/$${count}ints.txt"; \
+		rm -f "$(OUTPUT_DIR)/$${count}chars.bin"; \
+		rm -f "$(OUTPUT_DIR)/$${count}chars.txt"; \
+	done

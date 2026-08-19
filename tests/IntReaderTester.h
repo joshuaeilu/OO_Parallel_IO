@@ -7,7 +7,7 @@
 #include <iostream>                // cout, ...
 #include <fstream>                 // ifstream, ofstream, fstream
 #include <mpi.h>                   // MPI types
-#include "../OO_IO.h"          // 
+#include "../OO_IO/include/MPIProcessesIO.h"          // Reader
 using namespace std;
 
 class IntReaderTester {
@@ -543,7 +543,7 @@ runReadTests(ReaderType &reader) {
    
    if (id == MASTER) cout << "- Running read() tests... " << flush;
 
-   std::span<const int> v1 = reader.readChunk();
+   auto v1 = reader.readChunk();
 
    assert( reader.getFileSize() == 48 );         // 12 x 4
    assert( reader.getNumItemsInFile() == 12 );

@@ -1,4 +1,4 @@
-#include "OO_IO_2.h"
+#include "OO_IO.h"
 
 #include <iostream>
 #include <fstream>
@@ -11,16 +11,16 @@ volatile double checksumSink = 0.0;
 
 int main(int argc, char *argv[])
 {
-    if (argc != 2)
+    if (argc != 3)
     {
-        std::cerr << "Usage: " << argv[0] << " <binary-file>\n";
+        std::cerr << "Usage: " << argv[0] << " <binary-file> <num-threads>\n";
         return EXIT_FAILURE;
     }
 
     std::string fileName = argv[1];
 
     const int numRuns = 3;
-    const int numThreads = 12;
+    const int numThreads = std::stoi(argv[2]);
 
     std::string resultsFileName = "readBigFileResults.tsv";
 
@@ -39,7 +39,7 @@ int main(int argc, char *argv[])
         resultsFile << "Run\tThreads\tElapsedSeconds\n";
     }
 
-    resultsFile << "\nUsing OO_IO_2.h\n\n";
+    resultsFile << "\nUsing OO_IO.h\n\n";
 
     resultsFile << std::left
               << std::setw(10) << "Run"
@@ -51,6 +51,8 @@ int main(int argc, char *argv[])
 
     for (int run = 1; run <= numRuns; ++run)
     {
+        system("sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches'");
+
         Timer timer;
         double totalSum = 0.0;
 
