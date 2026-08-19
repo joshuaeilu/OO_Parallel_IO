@@ -73,3 +73,78 @@
  19-08-2026 08:48:36:683 [pid=25301 tid=25301] NOTICE  cufio-drv:1160 running in compatible mode
  19-08-2026 08:48:37:446 [pid=25301 tid=25301] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
  19-08-2026 08:48:37:564 [pid=25301 tid=25301] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 09:12:28:360 [pid=31274 tid=31274] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 09:12:29:128 [pid=31274 tid=31274] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 09:12:29:245 [pid=31274 tid=31274] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 09:13:37:987 [pid=31408 tid=31408] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 09:13:38:769 [pid=31408 tid=31408] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 09:13:38:885 [pid=31408 tid=31408] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 09:15:11:820 [pid=31760 tid=31760] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 09:15:12:576 [pid=31760 tid=31760] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 09:15:12:693 [pid=31760 tid=31760] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 09:16:24:216 [pid=31908 tid=31908] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 09:16:24:996 [pid=31908 tid=31908] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 09:16:25:112 [pid=31908 tid=31908] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 09:21:00:348 [pid=32212 tid=32212] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 09:21:01:159 [pid=32212 tid=32212] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 09:21:01:278 [pid=32212 tid=32212] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 09:34:34:293 [pid=33148 tid=33148] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 09:34:35:57 [pid=33148 tid=33148] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 09:34:35:173 [pid=33148 tid=33148] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 09:35:58:859 [pid=33344 tid=33344] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 09:35:59:593 [pid=33344 tid=33344] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 09:35:59:710 [pid=33344 tid=33344] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 09:40:12:356 [pid=33946 tid=33946] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 09:40:13:94 [pid=33946 tid=33946] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 09:40:13:211 [pid=33946 tid=33946] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 09:43:19:556 [pid=34161 tid=34161] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 09:43:20:284 [pid=34161 tid=34161] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 09:43:20:502 [pid=34161 tid=34161] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:14:33:383 [pid=35281 tid=35281] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:14:34:131 [pid=35281 tid=35281] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:14:34:247 [pid=35281 tid=35281] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:15:17:875 [pid=35490 tid=35490] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:15:18:618 [pid=35490 tid=35490] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:15:18:734 [pid=35490 tid=35490] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:16:18:140 [pid=35675 tid=35675] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:16:18:896 [pid=35675 tid=35675] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:16:19:14 [pid=35675 tid=35675] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:17:51:676 [pid=36041 tid=36041] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:17:52:412 [pid=36041 tid=36041] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:17:52:530 [pid=36041 tid=36041] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:19:30:786 [pid=36200 tid=36200] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:19:31:574 [pid=36200 tid=36200] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:19:31:690 [pid=36200 tid=36200] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:20:04:169 [pid=36330 tid=36330] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:20:04:959 [pid=36330 tid=36330] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:20:05:76 [pid=36330 tid=36330] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:24:41:953 [pid=36519 tid=36519] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:24:42:736 [pid=36519 tid=36519] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:24:42:853 [pid=36519 tid=36519] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:26:30:35 [pid=36740 tid=36740] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:26:30:816 [pid=36740 tid=36740] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:26:30:933 [pid=36740 tid=36740] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:28:04:394 [pid=36922 tid=36922] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:28:05:150 [pid=36922 tid=36922] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:28:05:266 [pid=36922 tid=36922] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:29:06:688 [pid=37049 tid=37049] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:29:07:407 [pid=37049 tid=37049] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:29:07:525 [pid=37049 tid=37049] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:30:17:324 [pid=37215 tid=37215] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:30:18:99 [pid=37215 tid=37215] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:30:18:215 [pid=37215 tid=37215] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:30:58:49 [pid=37347 tid=37347] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:30:58:842 [pid=37347 tid=37347] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:30:58:958 [pid=37347 tid=37347] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:31:55:454 [pid=37465 tid=37465] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:31:56:208 [pid=37465 tid=37465] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:31:56:325 [pid=37465 tid=37465] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:32:33:877 [pid=37597 tid=37597] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:32:34:664 [pid=37597 tid=37597] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:32:34:781 [pid=37597 tid=37597] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:34:00:957 [pid=37885 tid=37885] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:34:01:758 [pid=37885 tid=37885] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:34:01:875 [pid=37885 tid=37885] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
+ 19-08-2026 10:35:35:755 [pid=38117 tid=38117] NOTICE  cufio-drv:1160 running in compatible mode
+ 19-08-2026 10:35:36:568 [pid=38117 tid=38117] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 19-08-2026 10:35:36:686 [pid=38117 tid=38117] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6
