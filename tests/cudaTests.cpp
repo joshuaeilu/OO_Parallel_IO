@@ -58,7 +58,7 @@ std::vector<ItemType> readExpectedValues(const std::string &fileName, std::size_
 // -----------------------------------------------------------------------------
 
 template <class ItemType>
-std::vector<ItemType> copyDeviceToHost(const ItemType *devicePtr, std::size_t numItems) {
+std::vector<ItemType> copyGPUDataToDeviceMemory(const ItemType *devicePtr, std::size_t numItems) {
     std::vector<ItemType> hostBuffer(numItems);
 
     const std::size_t numBytes = numItems * sizeof(ItemType);
@@ -124,187 +124,204 @@ TEST_SUITE("CUDA Environment Tests") {
 // CUDA File Tests
 // =============================================================================
 
-// TEST_SUITE("CUDA File Tests") {
+TEST_SUITE("CUDA File Tests") {
 
-//     TEST_CASE("minimal CUDAReader constructor") {
+    TEST_CASE("minimal CUDAReader constructor") {
 
-//         CUDAReader<double> reader;
+        CUDAReader<double> reader;
 
-//         CHECK(reader.getID() == 0);
-//         CHECK(reader.getNumPEs() == 1);
+        CHECK(reader.getID() == 0);
+        CHECK(reader.getNumPEs() == 1);
 
-//         CHECK(reader.getFileName() == "");
+        CHECK(reader.getFileName() == "");
 
-//         CHECK(reader.getItemSize() == sizeof(double));
+        CHECK(reader.getItemSize() == sizeof(double));
 
-//         CHECK_FALSE(reader.getFileOpened());
-//     }
+        CHECK_FALSE(reader.getFileOpened());
+    }
 
-//     TEST_CASE("file-based CUDAReader constructor") {
+    TEST_CASE("file-based CUDAReader constructor") {
 
-//         CUDAReader<double> reader(FIVE_DOUBLES_FILE);
+        CUDAReader<double> reader(FIVE_DOUBLES_FILE);
 
-//         CHECK(reader.getID() == 0);
-//         CHECK(reader.getNumPEs() == 1);
+        CHECK(reader.getID() == 0);
+        CHECK(reader.getNumPEs() == 1);
 
-//         CHECK(reader.getFileName() == FIVE_DOUBLES_FILE);
+        CHECK(reader.getFileName() == FIVE_DOUBLES_FILE);
 
-//         CHECK(reader.getItemSize() == sizeof(double));
+        CHECK(reader.getItemSize() == sizeof(double));
 
-//         CHECK(reader.getFileSize() == 5L * static_cast<long>(sizeof(double)));
+        CHECK(reader.getFileSize() == 5L * static_cast<long>(sizeof(double)));
 
-//         CHECK(reader.getNumItemsInFile() == 5);
+        CHECK(reader.getNumItemsInFile() == 5);
 
-//         CHECK(reader.getFileOpened());
+        CHECK(reader.getFileOpened());
 
-//         reader.close();
+        reader.close();
 
-//         CHECK_FALSE(reader.getFileOpened());
-//     }
+        CHECK_FALSE(reader.getFileOpened());
+    }
 
-//     TEST_CASE("open and close reader using minimal constructor") {
+    TEST_CASE("open and close reader using minimal constructor") {
 
-//         CUDAReader<double> reader;
+        CUDAReader<double> reader;
 
-//         CHECK_FALSE(reader.getFileOpened());
+        CHECK_FALSE(reader.getFileOpened());
 
-//         reader.open(FIVE_DOUBLES_FILE, O_RDONLY | O_DIRECT);
+        reader.open(FIVE_DOUBLES_FILE, O_RDONLY | O_DIRECT);
 
-//         CHECK(reader.getFileOpened());
+        CHECK(reader.getFileOpened());
 
-//         CHECK(reader.getFileName() == FIVE_DOUBLES_FILE);
+        CHECK(reader.getFileName() == FIVE_DOUBLES_FILE);
 
-//         CHECK(reader.getItemSize() == sizeof(double));
+        CHECK(reader.getItemSize() == sizeof(double));
 
-//         CHECK(reader.getFileSize() == 5L * static_cast<long>(sizeof(double)));
+        CHECK(reader.getFileSize() == 5L * static_cast<long>(sizeof(double)));
 
-//         CHECK(reader.getNumItemsInFile() == 5);
+        CHECK(reader.getNumItemsInFile() == 5);
 
-//         reader.close();
+        reader.close();
 
-//         CHECK_FALSE(reader.getFileOpened());
-//     }
+        CHECK_FALSE(reader.getFileOpened());
+    }
 
-//     TEST_CASE("invalid write-only access mode is rejected") {
+    TEST_CASE("invalid write-only access mode is rejected") {
 
-//         CUDAReader<double> reader;
+        CUDAReader<double> reader;
 
-//         CHECK_THROWS_AS(reader.open(FIVE_DOUBLES_FILE, O_WRONLY | O_DIRECT), std::invalid_argument);
-//     }
+        CHECK_THROWS_AS(reader.open(FIVE_DOUBLES_FILE, O_WRONLY | O_DIRECT), std::invalid_argument);
+    }
 
-//     TEST_CASE("reading without opening a file throws") {
+    TEST_CASE("reading without opening a file throws") {
 
-//         CUDAReader<double> reader;
+        CUDAReader<double> reader;
 
-//         CHECK_THROWS_AS(reader.readToGPU(), std::runtime_error);
-//     }
-// }
+        CHECK_THROWS_AS(reader.readToGPU(), std::runtime_error);
+    }
+}
 
 // =============================================================================
 // CUDA Reading Tests
 // =============================================================================
 
-// TEST_SUITE("CUDA Reading Tests") {
+TEST_SUITE("CUDA Reading Tests") {
 
-//     TEST_CASE("reading an empty file using minimal constructor") {
+    TEST_CASE("reading an empty file using minimal constructor") {
 
-//         CUDAReader<double> reader;
+        CUDAReader<double> reader;
 
-//         reader.open(EMPTY_FILE, O_RDONLY | O_DIRECT);
+        reader.open(EMPTY_FILE, O_RDONLY | O_DIRECT);
 
-//         CHECK(reader.getFileOpened());
+        CHECK(reader.getFileOpened());
 
-//         CHECK(reader.getNumItemsInFile() == 0);
+        CHECK(reader.getNumItemsInFile() == 0);
 
-//         CHECK(reader.getFileSize() == 0);
+        CHECK(reader.getFileSize() == 0);
 
-//         double *gpuData = reader.readToGPU();
+        double *gpuData = reader.readToGPU();
 
-//         CHECK(gpuData == nullptr);
+        CHECK(gpuData == nullptr);
 
-//         reader.close();
+        reader.close();
 
-//         CHECK_FALSE(reader.getFileOpened());
-//     }
+        CHECK_FALSE(reader.getFileOpened());
+    }
 
-//     TEST_CASE("reading an empty file using file-based constructor") {
+    TEST_CASE("reading an empty file using file-based constructor") {
 
-//         CUDAReader<double> reader(EMPTY_FILE);
+        CUDAReader<double> reader(EMPTY_FILE);
 
-//         CHECK(reader.getFileOpened());
+        CHECK(reader.getFileOpened());
 
-//         CHECK(reader.getNumItemsInFile() == 0);
+        CHECK(reader.getNumItemsInFile() == 0);
 
-//         CHECK(reader.getFileSize() == 0);
+        CHECK(reader.getFileSize() == 0);
 
-//         double *gpuData = reader.readToGPU();
+        double *gpuData = reader.readToGPU();
 
-//         CHECK(gpuData == nullptr);
+        CHECK(gpuData == nullptr);
 
-//         reader.close();
+        reader.close();
 
-//         CHECK_FALSE(reader.getFileOpened());
-//     }
+        CHECK_FALSE(reader.getFileOpened());
+    }
 
-//     TEST_CASE("reading 1 million doubles to GPU") {
+    TEST_CASE("reading 1 million doubles that can fit into GPU") {
 
-//         const std::size_t numItems = ONE_MILLION;
+        const std::size_t numItems = ONE_MILLION;
 
-//         const std::size_t numBytes = numItems * sizeof(double);
+        const std::size_t numBytes = numItems * sizeof(double);
 
-//         // -----------------------------------------------------------------
-//         // Read expected values using ordinary CPU I/O.
-//         // -----------------------------------------------------------------
+        // Read expected values using ordinary CPU I/O.
+        std::vector<double> expected =
+            readExpectedValues<double>(ONE_MILLION_DOUBLES_FILE, numItems);
 
-//         std::vector<double> expected =
-//             readExpectedValues<double>(ONE_MILLION_DOUBLES_FILE, numItems);
+        SUBCASE("Using file-based constructor") {
 
-//         // -----------------------------------------------------------------
-//         // Read the same file directly into GPU memory using GDS.
-//         // -----------------------------------------------------------------
+            // Read the same file directly into GPU memory using GDS.
+            CUDAReader<double> reader(ONE_MILLION_DOUBLES_FILE);
 
-//         CUDAReader<double> reader(ONE_MILLION_DOUBLES_FILE);
+            CHECK(reader.getFileOpened());
 
-//         CHECK(reader.getFileOpened());
+            CHECK(reader.getNumItemsInFile() == numItems);
 
-//         CHECK(reader.getNumItemsInFile() == numItems);
+            CHECK(reader.getFileSize() == static_cast<long>(numBytes));
 
-//         CHECK(reader.getFileSize() == static_cast<long>(numBytes));
+            double *gpuData = reader.readToGPU();
 
-//         double *gpuData = reader.readToGPU();
+            REQUIRE(gpuData != nullptr);
 
-//         REQUIRE(gpuData != nullptr);
+            // Verify that readToGPU() really returned device memory.
+            cudaPointerAttributes attributes{};
+            cudaError_t cudaStatus = cudaPointerGetAttributes(&attributes, gpuData);
+            REQUIRE(cudaStatus == cudaSuccess);
+            CHECK(attributes.type == cudaMemoryTypeDevice);
 
-//         // -----------------------------------------------------------------
-//         // Verify that readToGPU() really returned device memory.
-//         // -----------------------------------------------------------------
+            // Copy GPU data back to CPU ONLY for verification.
+            std::vector<double> actual = copyGPUDataToDeviceMemory(gpuData, numItems);
+            checkValuesEqual(actual, expected);
 
-//         cudaPointerAttributes attributes{};
+            reader.close();
 
-//         cudaError_t cudaStatus = cudaPointerGetAttributes(&attributes, gpuData);
+            CHECK_FALSE(reader.getFileOpened());
+        }
 
-//         REQUIRE(cudaStatus == cudaSuccess);
+        SUBCASE("Using the minimal constructor") {
+            CUDAReader<double> reader;
 
-//         CHECK(attributes.type == cudaMemoryTypeDevice);
+            reader.open(ONE_MILLION_DOUBLES_FILE, O_RDONLY | O_DIRECT);
 
-//         // -----------------------------------------------------------------
-//         // Copy GPU data back to CPU ONLY for verification.
-//         // -----------------------------------------------------------------
+            CHECK(reader.getFileOpened());
 
-//         std::vector<double> actual = copyDeviceToHost(gpuData, numItems);
+            CHECK(reader.getNumItemsInFile() == numItems);
 
-//         // -----------------------------------------------------------------
-//         // Verify all values.
-//         // -----------------------------------------------------------------
+            CHECK(reader.getFileSize() == static_cast<long>(numBytes));
 
-//         checkValuesEqual(actual, expected);
+            double *gpuData = reader.readToGPU();
 
-//         // -----------------------------------------------------------------
-//         // Clean up.
-//         // -----------------------------------------------------------------
+            REQUIRE(gpuData != nullptr);
 
-//         reader.close();
+            // Verify that readToGPU() really returned device memory.
+            cudaPointerAttributes attributes{};
+            cudaError_t cudaStatus = cudaPointerGetAttributes(&attributes, gpuData);
+            REQUIRE(cudaStatus == cudaSuccess);
+            CHECK(attributes.type == cudaMemoryTypeDevice);
 
-//         CHECK_FALSE(reader.getFileOpened());
-//     }
-// }
+            // Copy GPU data back to CPU ONLY for verification.
+            std::vector<double> actual = copyGPUDataToDeviceMemory(gpuData, numItems);
+
+            // Verify all values.
+            checkValuesEqual(actual, expected);
+
+            reader.close();
+
+            CHECK_FALSE(reader.getFileOpened());
+        }
+    }
+
+    TEST_CASE("reading 3 billion doubles that may not fit into GPU") {
+
+
+    }
+
+}

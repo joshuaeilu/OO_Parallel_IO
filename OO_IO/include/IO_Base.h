@@ -10,13 +10,18 @@
 #include <chrono>  // std::chrono
 #include <cstdio>  // fprintf(), printf(), stderr
 #include <cstdlib> // exit(), EXIT_FAILURE
+#include <cstddef> // std::size_t
+#include <cstring> // std::memcpy
 #include <string>  // std::string
 #include <vector>  // std::vector
 #include <climits> // INT_MAX
 #include <cstddef> // std::size_t
 #include <fcntl.h> // open(), O_RDONLY, O_RDWR, ...
 #include <sys/stat.h> // fstat()
+#include <stdexcept>
+#include <unistd.h> // POSIX API (open, close, etc.)
 #include <iostream>
+#include <algorithm> // std::min, std::max
 /* IO_Base is a templated base class that supports parallel binary I/O
  * using MPI-IO (processes) or POSIX I/O (threads).
  * It stores information about the file and each PE’s chunk, and provides

@@ -1,5 +1,4 @@
-#ifndef CUDAIO_H
-#define CUDAIO_H
+
 
 /* CUDAIO.h contains the CUDAIO class that provides I/O operations using
  * NVIDIA GPUDirect Storage (GDS) for reading and writing files directly to
@@ -9,41 +8,30 @@
  * date:   Summer 2026
  */
 
+#ifndef CUDAIO_H
+#define CUDAIO_H
 #include "IO_Base.h"
 
 #include <cuda_runtime.h>
 #include <cufile.h>
 
-#include <cerrno>
-#include <cstddef>
-#include <cstring>
-#include <fcntl.h>
-#include <limits>
-#include <stdexcept>
-#include <string>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <cerrno> // errno
+#include <limits> // std::numeric_limits
 
+/********************************************************************
+ * Helper function declarations.
+ ********************************************************************/
 inline void checkResult(cudaError_t result);
 inline void checkResult(CUfileError_t result);
-/*
- * CUDAIO
+
+/*********************************************************************
+ * CUDAIO is the base class for CUDAReader and CUDAWriter that uses NVIDIA
+ * GPUDirect Storage (GDS) to read/write binary data directly to and from GPU memory.
  *
+ * The CUDA backend currently uses one processing element: id = 0, numPEs = 1
  *
- * CUDAIO is the base class for CUDAReader and CUDAWriter.
+ * It's subclasses are CUDAReader and CUDAWriter.
  *
- * The CUDA backend currently uses one processing element:
- *
- *      id     = 0
- *      numPEs = 1
- *
- * CUDAIO owns:
- *
- *      - the POSIX file descriptor
- *      - the cuFile handle
- *      - any GPU buffer allocated by a CUDAReader
- *
- * CUDAWriter does not take ownership of GPU pointers passed to writeChunk().
  */
 
 template <class ItemType>
@@ -56,85 +44,52 @@ class CUDAIO : public IO_Base<ItemType> {
     void close() override;
 
     void setHandleRegistered(bool registered) { this->cfHandleRegistered = registered; }
-    virtual ~CUDAIO();
+
+    virtual ~CUDAIO() = default;
 
   protected:
     int fd = -1;
 
-    CUfileHandle_t cfHandle{};
-
+    CUfileHandle_t cfHandle{}; // cuFile handle for the open file
     bool cfHandleRegistered = false;
 
     void *devPtr = nullptr;
-
     std::size_t bufferSize = 0;
+
+    void freeDeviceBuffer(); // Frees the GPU memory buffer if allocated
 };
 
-/*
- * CUDAReader
+/* freeDeviceBuffer()
  *
- *
- * CUDAReader reads an entire binary file directly into GPU memory using
- * NVIDIA GPUDirect Storage.
+ * Precondition: devPtr points to an allocated GPU memory buffer.
+ *                 && bufferSize > 0
+ * Postcondition: the GPU memory buffer is freed and devPtr is set to nullptr.
  */
-
 template <class ItemType>
-class CUDAReader : public CUDAIO<ItemType> {
-
-  public:
-    CUDAReader();
-    CUDAReader(const std::string &fileName);
-    ItemType *readToGPU();
-
-    ~CUDAReader() = default;
-};
-
-/*
- * CUDAWriter
- *
- *
- * CUDAWriter writes data that already resides in GPU memory directly to
- * storage using NVIDIA GPUDirect Storage.
- */
-
-template <class ItemType>
-class CUDAWriter : public CUDAIO<ItemType> {
-
-  public:
-    CUDAWriter(long fileSize);
-
-    CUDAWriter(long fileSize, const std::string &fileName);
-
-    /*
-     * CUDAWriter needs slightly different open behavior because the output
-     * file must be resized to the requested file size.
-     */
-    void open(const std::string &fileName, int openMode) override;
-
-    /*
-     * Writes numItems values directly from GPU memory to the file.
-     */
-    void writeChunk(const ItemType *gpuData, std::size_t numItems);
-
-    ~CUDAWriter() = default;
-};
+void CUDAIO<ItemType>::freeDeviceBuffer() {
+    if (this->devPtr != nullptr) {
+        checkResult(cudaFree(this->devPtr));
+        this->devPtr = nullptr;
+        this->bufferSize = 0;
+    }
+}
 
 /*
  * CUDAIO constructor
  *
+ * Postcondition: CUDAIO object is initialized with one processing element
+ * (id = 0, numPEs = 1) and no file opened.
+ *
  */
-
 template <class ItemType>
 CUDAIO<ItemType>::CUDAIO() : IO_Base<ItemType>(0, 1) {}
 
 /*
  * CUDAIO::open
- *
  * @param: fileName, path to the file
  * @param: openMode, POSIX file open flags
- *
  * Allowed access modes: O_RDONLY, O_RDWR, O_WRONLY, O_CREAT, O_TRUNC, O_DIRECT
- *
+ * Precondition: no file is currently open with this object.
  * Postcondition: file is open
  *      & file descriptor is registered with cuFile
  *      & IO_Base file metadata is initialized
@@ -209,11 +164,7 @@ template <class ItemType>
 void CUDAIO<ItemType>::close() {
 
     // Free owned GPU memory
-    if (this->devPtr != nullptr) {
-        cudaFree(this->devPtr);
-        this->devPtr = nullptr;
-        this->bufferSize = 0;
-    }
+    this->freeDeviceBuffer();
 
     // Deregister cuFile handle
     if (this->cfHandleRegistered) {
@@ -230,6 +181,29 @@ void CUDAIO<ItemType>::close() {
 
     IO_Base<ItemType>::setFileOpened(false);
 }
+
+/*
+ * CUDAReader reads an entire binary file directly into GPU memory using
+ * NVIDIA GPUDirect Storage.
+ */
+
+template <class ItemType>
+class CUDAReader : public CUDAIO<ItemType> {
+
+  public:
+    CUDAReader();
+    CUDAReader(const std::string &fileName);
+    ItemType *readToGPU(); // Reads the entire file into GPU memory
+
+    std::vector<ItemType> readChunksToGPU(); // Reads the file in chunks into GPU memory
+
+    template <class Callback>
+    std::vector<ItemType>
+    readChunksToGPU(Callback callback); // Reads the file in chunks into GPU memory and
+                                        // applies the callback to each chunk
+
+    ~CUDAReader() = default;
+};
 
 /* CUDAReader minimal constructor
  */
@@ -249,16 +223,33 @@ template <class ItemType>
 CUDAReader<ItemType>::CUDAReader(const std::string &fileName) : CUDAIO<ItemType>() {
     this->open(fileName, O_RDONLY | O_DIRECT);
 }
+/*
+ * CUDAWriter writes data that already resides in GPU memory directly to
+ * storage using NVIDIA GPUDirect Storage.
+ */
+
+template <class ItemType>
+class CUDAWriter : public CUDAIO<ItemType> {
+
+  public:
+    CUDAWriter(long fileSize);
+
+    CUDAWriter(long fileSize, const std::string &fileName);
+
+    void open(const std::string &fileName, int openMode) override;
+
+    // Writes numItems values directly from GPU memory to the file.
+    void writeChunk(const ItemType *gpuData, std::size_t numItems);
+
+    ~CUDAWriter() = default;
+};
 
 /* CUDAReader::readToGPU
  * Reads the entire file directly into GPU memory.
- *
- * The returned pointer is owned by this CUDAReader.
- *
- * The caller must NOT call cudaFree() on the returned pointer.
- * CUDAReader::close() or the destructor releases the GPU memory.
- *
- * Returns nullptr for an empty file.
+ * Precondition: file is open and ready for reading.
+ *                  && file can fit into available GPU memory.
+ * Postcondition: GPU memory contains the entire file content, or nullptr if the file is
+ * empty.
  */
 
 template <class ItemType>
@@ -270,25 +261,18 @@ ItemType *CUDAReader<ItemType>::readToGPU() {
         throw std::runtime_error("CUDAReader::readToGPU(): file not opened");
     }
 
-    const std::size_t fileSize = static_cast<std::size_t>(IO_Base<ItemType>::getFileSize());
+    const std::size_t fileSize =
+        static_cast<std::size_t>(IO_Base<ItemType>::getFileSize());
 
     if (fileSize == 0) {
         // If a previous read allocated memory, release it.
-        if (this->devPtr != nullptr) {
-            checkResult(cudaFree(this->devPtr));
-            this->devPtr = nullptr;
-        }
-        this->bufferSize = 0;
+        this->freeDeviceBuffer();
 
         return nullptr;
     }
 
     // Release buffer from a previous readToGPU() call
-    if (this->devPtr != nullptr) {
-        checkResult(cudaFree(this->devPtr));
-        this->devPtr = nullptr;
-        this->bufferSize = 0;
-    }
+    this->freeDeviceBuffer();
 
     std::size_t freeMemory = 0;
     std::size_t totalMemory = 0;
@@ -299,8 +283,10 @@ ItemType *CUDAReader<ItemType>::readToGPU() {
         throw std::runtime_error(
             "CUDAReader::readToGPU(): file is too large to fit in available GPU memory. "
             "Required: " +
-            std::to_string(fileSize) + " bytes, available: " + std::to_string(freeMemory) +
-            " bytes, total GPU memory: " + std::to_string(totalMemory) + " bytes");
+            std::to_string(fileSize) +
+            " bytes, available: " + std::to_string(freeMemory) +
+            " bytes. Use readChunksToGPU() to read files larger than available GPU "
+            "memory.");
     }
 
     // Allocate GPU memory
@@ -313,26 +299,142 @@ ItemType *CUDAReader<ItemType>::readToGPU() {
 
     // Check for GDS read failure
     if (readBytes < 0) {
-        checkResult(cudaFree(this->devPtr));
-        this->devPtr = nullptr;
-        this->bufferSize = 0;
-        throw std::runtime_error("CUDAReader::readToGPU(): cuFileRead failed with error " +
-                                 std::to_string(readBytes));
+        this->freeDeviceBuffer();
+        throw std::runtime_error(
+            "CUDAReader::readToGPU(): cuFileRead failed with error " +
+            std::to_string(readBytes));
     }
 
     // Verify that the entire file was read
     if (static_cast<std::size_t>(readBytes) != fileSize) {
         const std::size_t actualBytes = static_cast<std::size_t>(readBytes);
-        checkResult(cudaFree(this->devPtr));
-        this->devPtr = nullptr;
-        this->bufferSize = 0;
+        this->freeDeviceBuffer();
         throw std::runtime_error("CUDAReader::readToGPU(): read bytes mismatch. "
                                  "Expected: " +
-                                 std::to_string(fileSize) +
-                                 " bytes, read: " + std::to_string(actualBytes) + " bytes");
+                                 std::to_string(fileSize) + " bytes, read: " +
+                                 std::to_string(actualBytes) + " bytes");
     }
 
     return static_cast<ItemType *>(this->devPtr);
+}
+
+
+
+/*
+ * CUDAReader::readChunksToGPU
+ * Reads the file in chunks that can fit into available GPU memory.
+ * 
+ * Precondition: file is open and ready for reading.
+ * @note: This function is useful for reading large files that cannot fit entirely into GPU memory.
+ * Postcondition: Host memory contains the entire file content in a contiguous vector.
+ */
+template <class ItemType>
+std::vector<ItemType> CUDAReader<ItemType>::readChunksToGPU() {
+
+    return readChunksToGPU([](ItemType *, std::size_t) {
+        // No processing
+    });
+}
+
+template <class ItemType>
+template <class Callback>
+std::vector<ItemType> CUDAReader<ItemType>::readChunksToGPU(Callback processChunk) {
+
+    if (!IO_Base<ItemType>::getFileOpened()) {
+        throw std::runtime_error("CUDAReader::readChunksToGPU(): file not opened");
+    }
+
+    const std::size_t fileSize =
+        static_cast<std::size_t>(IO_Base<ItemType>::getFileSize());
+
+    const std::size_t totalItems = fileSize / sizeof(ItemType);
+
+    if (fileSize == 0) {
+        return {};
+    }
+
+    this->freeDeviceBuffer();
+
+    // Find available GPU memory
+    std::size_t freeMemory = 0;
+    std::size_t totalMemory = 0;
+
+    checkResult(cudaMemGetInfo(&freeMemory, &totalMemory));
+
+    constexpr double MEMORY_FRACTION = 0.90;
+
+    std::size_t availableSize = static_cast<std::size_t>(freeMemory * MEMORY_FRACTION);
+
+    this->bufferSize = std::min(fileSize, availableSize);
+
+    // Keep complete ItemType values
+    this->bufferSize -= this->bufferSize % sizeof(ItemType);
+
+    if (this->bufferSize == 0) {
+        throw std::runtime_error("CUDAReader::readChunksToGPU(): "
+                                 "not enough available GPU memory");
+    }
+
+    // Allocate ONE reusable GPU buffer
+    checkResult(cudaMalloc(&(this->devPtr), this->bufferSize));
+
+    // Host vector will eventually contain the entire file
+    std::vector<ItemType> fileData(totalItems);
+
+    std::size_t fileOffset = 0;
+    std::size_t itemOffset = 0;
+
+    while (fileOffset < fileSize) {
+
+        const std::size_t remainingBytes = fileSize - fileOffset;
+
+        const std::size_t bytesToRead = std::min(this->bufferSize, remainingBytes);
+
+        ssize_t readBytes = cuFileRead(this->cfHandle, this->devPtr, bytesToRead,
+                                       static_cast<off_t>(fileOffset), 0);
+
+        if (readBytes < 0) {
+            this->freeDeviceBuffer();
+
+            throw std::runtime_error("CUDAReader::readChunksToGPU(): "
+                                     "cuFileRead failed");
+        }
+
+        if (readBytes == 0) {
+            this->freeDeviceBuffer();
+
+            throw std::runtime_error("CUDAReader::readChunksToGPU(): "
+                                     "unexpected end of file");
+        }
+
+        const std::size_t numItems =
+            static_cast<std::size_t>(readBytes) / sizeof(ItemType);
+
+        ItemType *gpuData = static_cast<ItemType *>(this->devPtr);
+
+        // ---------------------------------
+        // Process current chunk on the GPU
+        // ---------------------------------
+
+        processChunk(gpuData, numItems);
+
+        checkResult(cudaDeviceSynchronize());
+
+        // ---------------------------------
+        // Preserve this chunk on the CPU
+        // before devPtr gets overwritten
+        // ---------------------------------
+
+        checkResult(cudaMemcpy(fileData.data() + itemOffset, gpuData,
+                               static_cast<std::size_t>(readBytes),
+                               cudaMemcpyDeviceToHost));
+
+        fileOffset += static_cast<std::size_t>(readBytes);
+
+        itemOffset += numItems;
+    }
+
+    return fileData;
 }
 
 /*
@@ -394,7 +496,8 @@ void CUDAWriter<ItemType>::writeChunk(const ItemType *gpuData, std::size_t numIt
 
     const std::size_t bytesToWrite = numItems * sizeof(ItemType);
 
-    const std::size_t expectedBytes = static_cast<std::size_t>(IO_Base<ItemType>::getFileSize());
+    const std::size_t expectedBytes =
+        static_cast<std::size_t>(IO_Base<ItemType>::getFileSize());
 
     if (bytesToWrite == 0) {
 
@@ -418,8 +521,8 @@ void CUDAWriter<ItemType>::writeChunk(const ItemType *gpuData, std::size_t numIt
         throw std::invalid_argument(
             "CUDAWriter::writeChunk(): GPU buffer size does not match output file size. "
             "Expected: " +
-            std::to_string(expectedBytes) + " bytes, received: " + std::to_string(bytesToWrite) +
-            " bytes");
+            std::to_string(expectedBytes) +
+            " bytes, received: " + std::to_string(bytesToWrite) + " bytes");
     }
 
     // Verify that the pointer refers to CUDA-accessible memory
@@ -427,7 +530,8 @@ void CUDAWriter<ItemType>::writeChunk(const ItemType *gpuData, std::size_t numIt
 
     checkResult(cudaPointerGetAttributes(&attributes, gpuData));
 
-    if (attributes.type != cudaMemoryTypeDevice && attributes.type != cudaMemoryTypeManaged) {
+    if (attributes.type != cudaMemoryTypeDevice &&
+        attributes.type != cudaMemoryTypeManaged) {
 
         throw std::invalid_argument(
             "CUDAWriter::writeChunk(): expected CUDA device or managed memory");
@@ -439,8 +543,9 @@ void CUDAWriter<ItemType>::writeChunk(const ItemType *gpuData, std::size_t numIt
     // Check for GDS write failure
     if (writtenBytes < 0) {
 
-        throw std::runtime_error("CUDAWriter::writeChunk(): cuFileWrite failed with error " +
-                                 std::to_string(writtenBytes));
+        throw std::runtime_error(
+            "CUDAWriter::writeChunk(): cuFileWrite failed with error " +
+            std::to_string(writtenBytes));
     }
 
     // Verify complete write
@@ -449,8 +554,8 @@ void CUDAWriter<ItemType>::writeChunk(const ItemType *gpuData, std::size_t numIt
 
         throw std::runtime_error("CUDAWriter::writeChunk(): write bytes mismatch. "
                                  "Expected: " +
-                                 std::to_string(bytesToWrite) +
-                                 " bytes, wrote: " + std::to_string(writtenBytes) + " bytes");
+                                 std::to_string(bytesToWrite) + " bytes, wrote: " +
+                                 std::to_string(writtenBytes) + " bytes");
     }
 
     // Flush file changes
@@ -462,25 +567,19 @@ void CUDAWriter<ItemType>::writeChunk(const ItemType *gpuData, std::size_t numIt
 }
 
 // Helper Utilities
- 
+
 inline void checkResult(cudaError_t result) {
 
     if (result != cudaSuccess) {
-        throw std::runtime_error(
-            std::string("CUDA Error: ") +
-            cudaGetErrorString(result)
-        );
+        throw std::runtime_error(std::string("CUDA Error: ") +
+                                 cudaGetErrorString(result));
     }
 }
-
 
 inline void checkResult(CUfileError_t result) {
 
     if (result.err != CU_FILE_SUCCESS) {
-        throw std::runtime_error(
-            "cuFile Error: " +
-            std::to_string(result.err)
-        );
+        throw std::runtime_error("cuFile Error: " + std::to_string(result.err));
     }
 }
-#endif  // CUDAIO_H
+#endif // CUDAIO_H
