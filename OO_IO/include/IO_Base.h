@@ -14,6 +14,8 @@
 #include <vector>  // std::vector
 #include <climits> // INT_MAX
 #include <cstddef> // std::size_t
+#include <fcntl.h> // open(), O_RDONLY, O_RDWR, ...
+#include <sys/stat.h> // fstat()
 #include <iostream>
 /* IO_Base is a templated base class that supports parallel binary I/O
  * using MPI-IO (processes) or POSIX I/O (threads).

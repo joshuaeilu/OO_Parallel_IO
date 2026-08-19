@@ -358,10 +358,8 @@ TEST_SUITE("Threaded Reading Tests") {
 
         SUBCASE("using minimal constructor") {
             ThreadReader<double> reader(instance.threadID, instance.numThreads);
-
             reader.open("./files/5doubles.bin", O_RDONLY);
             std::span<const double> chunk = reader.readChunk();
-
             CHECK(reader.getFileOpened() == true);
             CHECK(reader.getNumItemsInFile() == 5);
             CHECK(reader.getFileSize() == 5 * sizeof(double));

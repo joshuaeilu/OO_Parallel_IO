@@ -66,12 +66,16 @@ class ThreadReader : public ThreadsIO<ItemType> {
     ~ThreadReader() = default;
 
   private:
-    static inline int sharedReadFd{-1};                       // file descriptor for the shared input file
-    static inline void *sharedReadMapBase{nullptr};           // base address of the shared memory mapping for the input file
-    static inline const ItemType *sharedReadMapData{nullptr}; // pointer to the shared memory mapping for the input file
-    static inline std::size_t sharedReadMapBytes{0};          // size of the shared memory mapping for the input file
-    static inline long sharedReadFileSize{0};                 // size of the shared input file
-    static inline std::atomic<bool> readOpenFlag{false};      // indicates whether the shared input file is open
+    static inline int sharedReadFd{-1}; // file descriptor for the shared input file
+    static inline void *sharedReadMapBase{
+        nullptr}; // base address of the shared memory mapping for the input file
+    static inline const ItemType *sharedReadMapData{
+        nullptr}; // pointer to the shared memory mapping for the input file
+    static inline std::size_t sharedReadMapBytes{
+        0}; // size of the shared memory mapping for the input file
+    static inline long sharedReadFileSize{0}; // size of the shared input file
+    static inline std::atomic<bool> readOpenFlag{
+        false}; // indicates whether the shared input file is open
     static inline std::atomic<int> remainingThreadReaders{0};
 };
 
@@ -83,7 +87,8 @@ class ThreadReader : public ThreadsIO<ItemType> {
  * Postcondition: this reader has been initialized for threaded input.
  */
 template <class ItemType>
-ThreadReader<ItemType>::ThreadReader(int id, int numThreads) : ThreadsIO<ItemType>(id, numThreads) {}
+ThreadReader<ItemType>::ThreadReader(int id, int numThreads)
+    : ThreadsIO<ItemType>(id, numThreads) {}
 
 /* ThreadReader file-based constructor
  * @param: id, this thread's id
@@ -96,7 +101,8 @@ ThreadReader<ItemType>::ThreadReader(int id, int numThreads) : ThreadsIO<ItemTyp
  *                and the file has been opened.
  */
 template <class ItemType>
-ThreadReader<ItemType>::ThreadReader(int id, int numThreads, const std::string &fileName) : ThreadsIO<ItemType>(id, numThreads) {
+ThreadReader<ItemType>::ThreadReader(int id, int numThreads, const std::string &fileName)
+    : ThreadsIO<ItemType>(id, numThreads) {
     this->open(fileName, O_RDONLY);
 }
 
@@ -150,7 +156,8 @@ void ThreadReader<ItemType>::open(const std::string &fileName, int openMode) {
 
         // mmap() cannot be used for a zero-byte file.
         if (sharedReadMapBytes > 0) {
-            sharedReadMapBase = mmap(nullptr, sharedReadMapBytes, PROT_READ, MAP_PRIVATE, sharedReadFd, 0);
+            sharedReadMapBase =
+                mmap(nullptr, sharedReadMapBytes, PROT_READ, MAP_PRIVATE, sharedReadFd, 0);
 
             if (sharedReadMapBase == MAP_FAILED) {
                 perror("ThreadReader::mmap");
@@ -187,7 +194,8 @@ void ThreadReader<ItemType>::open(const std::string &fileName, int openMode) {
     // Each individual ThreadReader records the shared file metadata.
     IO_Base<ItemType>::setFileName(fileName);
     IO_Base<ItemType>::setFileSize(sharedReadFileSize);
-    IO_Base<ItemType>::setNumItemsInFile(sharedReadFileSize / static_cast<long>(IO_Base<ItemType>::getItemSize()));
+    IO_Base<ItemType>::setNumItemsInFile(sharedReadFileSize /
+                                         static_cast<long>(IO_Base<ItemType>::getItemSize()));
     IO_Base<ItemType>::setFileOpened(true);
 }
 
@@ -252,7 +260,8 @@ std::vector<ItemType> ThreadReader<ItemType>::readChunk() {
     }
     long start = 0, stop = 0;
 
-    getChunkStartStopValues(IO_Base<ItemType>::getID(), IO_Base<ItemType>::getNumPEs(), numItemsInFile, start, stop);
+    getChunkStartStopValues(IO_Base<ItemType>::getID(), IO_Base<ItemType>::getNumPEs(),
+                            numItemsInFile, start, stop);
 
     long chunkSize = stop - start;
     IO_Base<ItemType>::setChunkSize(chunkSize);
@@ -362,7 +371,8 @@ class ThreadWriter : public ThreadsIO<ItemType> {
  * @param: fileSize, final output file size in bytes
  */
 template <class ItemType>
-ThreadWriter<ItemType>::ThreadWriter(int id, int numThreads, long fileSize) : ThreadsIO<ItemType>(id, numThreads) {
+ThreadWriter<ItemType>::ThreadWriter(int id, int numThreads, long fileSize)
+    : ThreadsIO<ItemType>(id, numThreads) {
     IO_Base<ItemType>::setFileSize(fileSize);
 }
 
@@ -373,7 +383,8 @@ ThreadWriter<ItemType>::ThreadWriter(int id, int numThreads, long fileSize) : Th
  * @param: fileName, the name of the output file
  */
 template <class ItemType>
-ThreadWriter<ItemType>::ThreadWriter(int id, int numThreads, long fileSize, const std::string &fileName)
+ThreadWriter<ItemType>::ThreadWriter(int id, int numThreads, long fileSize,
+                                     const std::string &fileName)
     : ThreadsIO<ItemType>(id, numThreads) {
     IO_Base<ItemType>::setFileSize(fileSize);
     open(fileName, O_RDWR);
@@ -431,7 +442,8 @@ void ThreadWriter<ItemType>::open(const std::string &fileName, int openMode) {
 
         // mmap() cannot map a zero-byte file.
         if (sharedWriteMapBytes > 0) {
-            sharedWriteMapBase = mmap(nullptr, sharedWriteMapBytes, PROT_READ | PROT_WRITE, MAP_SHARED, sharedWriteFd, 0);
+            sharedWriteMapBase = mmap(nullptr, sharedWriteMapBytes, PROT_READ | PROT_WRITE,
+                                      MAP_SHARED, sharedWriteFd, 0);
 
             if (sharedWriteMapBase == MAP_FAILED) {
                 perror("ThreadWriter::mmap");
@@ -467,7 +479,8 @@ void ThreadWriter<ItemType>::open(const std::string &fileName, int openMode) {
     IO_Base<ItemType>::setFileName(fileName);
     IO_Base<ItemType>::setFileSize(sharedWriteFileSize);
 
-    IO_Base<ItemType>::setNumItemsInFile(sharedWriteFileSize / static_cast<long>(IO_Base<ItemType>::getItemSize()));
+    IO_Base<ItemType>::setNumItemsInFile(sharedWriteFileSize /
+                                         static_cast<long>(IO_Base<ItemType>::getItemSize()));
 
     IO_Base<ItemType>::setFileOpened(true);
 }
@@ -547,14 +560,15 @@ void ThreadWriter<ItemType>::writeChunk(const std::span<const ItemType> &v) {
     IO_Base<ItemType>::setNumItemsInFile(totalItems);
 
     long start = 0, stop = 0;
-    getChunkStartStopValues(IO_Base<ItemType>::getID(), IO_Base<ItemType>::getNumPEs(), totalItems, start, stop);
+    getChunkStartStopValues(IO_Base<ItemType>::getID(), IO_Base<ItemType>::getNumPEs(), totalItems,
+                            start, stop);
 
     long expectedChunkSize = stop - start;
     long actualChunkSize = static_cast<long>(v.size());
 
     if (actualChunkSize != expectedChunkSize) {
-        fprintf(stderr, "Thread %d: chunk size mismatch (expected %ld, got %ld)\n", IO_Base<ItemType>::getID(), expectedChunkSize,
-                actualChunkSize);
+        fprintf(stderr, "Thread %d: chunk size mismatch (expected %ld, got %ld)\n",
+                IO_Base<ItemType>::getID(), expectedChunkSize, actualChunkSize);
         exit(EXIT_FAILURE);
     }
 
