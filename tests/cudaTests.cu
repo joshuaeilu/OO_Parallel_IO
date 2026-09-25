@@ -74,7 +74,7 @@ std::vector<ItemType> readExpectedValues(const std::string &fileName,
 // -----------------------------------------------------------------------------
 
 template <class ItemType>
-std::vector<ItemType> copyGPUDataToDeviceMemory(const ItemType *devicePtr,
+std::vector<ItemType> copyGPUDataToHostMemory(const ItemType *devicePtr,
                                                 std::size_t numItems) {
     std::vector<ItemType> hostBuffer(numItems);
 
@@ -297,7 +297,7 @@ TEST_SUITE("CUDA Reading Tests") {
             CHECK(attributes.type == cudaMemoryTypeDevice);
 
             // Copy GPU data back to CPU ONLY for verification.
-            std::vector<double> actual = copyGPUDataToDeviceMemory(gpuData, numItems);
+            std::vector<double> actual = copyGPUDataToHostMemory(gpuData, numItems);
             checkValuesEqual(actual, expected);
 
             reader.close();
@@ -327,7 +327,7 @@ TEST_SUITE("CUDA Reading Tests") {
             CHECK(attributes.type == cudaMemoryTypeDevice);
 
             // Copy GPU data back to CPU ONLY for verification.
-            std::vector<double> actual = copyGPUDataToDeviceMemory(gpuData, numItems);
+            std::vector<double> actual = copyGPUDataToHostMemory(gpuData, numItems);
 
             // Verify all values.
             checkValuesEqual(actual, expected);
@@ -391,7 +391,7 @@ TEST_SUITE("CUDA Reading Tests") {
 
             auto callback = [](double *gpuData, size_t numItems) {
                 // Example callback: copy GPU data back to CPU and verify size.
-                std::vector<double> actual = copyGPUDataToDeviceMemory(gpuData,
+                std::vector<double> actual = copyGPUDataToHostMemory(gpuData,
                 numItems); CHECK(actual.size() == numItems);
             };
 
@@ -408,7 +408,7 @@ TEST_SUITE("CUDA Reading Tests") {
             auto callback = [](double *gpuData, size_t numItems) {
                 // Save the original values before modifying them.
                 std::vector<double> original =
-                    copyGPUDataToDeviceMemory(gpuData, numItems);
+                    copyGPUDataToHostMemory(gpuData, numItems);
 
                 constexpr size_t threadsPerBlock = 256;
 
@@ -421,7 +421,7 @@ TEST_SUITE("CUDA Reading Tests") {
                 checkResult(cudaDeviceSynchronize());
 
                 // Copy the modified values back to the CPU.
-                std::vector<double> actual = copyGPUDataToDeviceMemory(gpuData,
+                std::vector<double> actual = copyGPUDataToHostMemory(gpuData,
                 numItems);
 
                 REQUIRE(actual.size() == original.size());

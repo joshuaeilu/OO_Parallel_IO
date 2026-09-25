@@ -599,23 +599,24 @@ TEST_SUITE("Thread Writing Tests") {
 
                         getChunkStartStopValues(instance.threadID, instance.numThreads, itemCount, start, stop);
 
-                        std::vector<Type> valuesToWrite;
+                        long chunkSize = stop - start;
+                        std::vector<Type> chunkToWrite(chunkSize);
 
-                        for (long index = start; index < stop; ++index) {
-                            valuesToWrite.push_back(static_cast<Type>(index + 1));
+                        for (long index = 0; index < chunkSize; ++index) {
+                            chunkToWrite[index] = static_cast<Type>(index + instance.numThreads);
                         }
 
                         ThreadWriter<Type> writer(instance.threadID, instance.numThreads, itemCount * sizeof(Type));
 
                         writer.open(fileName, O_RDWR | O_CREAT);
 
-                        writer.writeChunk(valuesToWrite);
+                        writer.writeChunk(chunkToWrite);
 
                         CHECK(writer.getNumItemsInFile() == itemCount);
 
                         CHECK(writer.getFileSize() == itemCount * sizeof(Type));
 
-                        CHECK(writer.getChunkSize() == static_cast<long>(valuesToWrite.size()));
+                        CHECK(writer.getChunkSize() == static_cast<long>(chunkToWrite.size()));
 
                         CHECK(writer.getFirstItemOffset() == start);
 
@@ -627,9 +628,9 @@ TEST_SUITE("Thread Writing Tests") {
 
                         ThreadReader<Type> reader(instance.threadID, instance.numThreads, fileName);
                         std::vector<Type> valuesRead = reader.readChunk();
-                        CHECK(valuesRead.size() == valuesToWrite.size());
+                        CHECK(valuesRead.size() == chunkToWrite.size());
                         for (std::size_t i = 0; i < valuesRead.size(); ++i) {
-                            CHECK(valuesRead[i] == valuesToWrite[i]);
+                            CHECK(valuesRead[i] == chunkToWrite[i]);
                         }
                         reader.close();
                         instance.synchronize();
@@ -657,21 +658,22 @@ TEST_SUITE("Thread Writing Tests") {
 
                         getChunkStartStopValues(instance.threadID, instance.numThreads, itemCount, start, stop);
 
-                        std::vector<Type> valuesToWrite;
+                        long chunkSize = stop - start;
+                        std::vector<Type> chunkToWrite(chunkSize);
 
-                        for (long index = start; index < stop; ++index) {
-                            valuesToWrite.push_back(static_cast<Type>(index + 1));
+                        for (long index = 0; index < chunkSize; ++index) {
+                            chunkToWrite[index] = static_cast<Type>(index + instance.numThreads);
                         }
 
                         ThreadWriter<Type> writer(instance.threadID, instance.numThreads, itemCount * sizeof(Type), fileName);
 
-                        writer.writeChunk(valuesToWrite);
+                        writer.writeChunk(chunkToWrite);
 
                         CHECK(writer.getNumItemsInFile() == itemCount);
 
                         CHECK(writer.getFileSize() == itemCount * sizeof(Type));
 
-                        CHECK(writer.getChunkSize() == static_cast<long>(valuesToWrite.size()));
+                        CHECK(writer.getChunkSize() == static_cast<long>(chunkToWrite.size()));
 
                         CHECK(writer.getFirstItemOffset() == start);
 
@@ -683,9 +685,9 @@ TEST_SUITE("Thread Writing Tests") {
 
                         ThreadReader<Type> reader(instance.threadID, instance.numThreads, fileName);
                         std::vector<Type> valuesRead = reader.readChunk();
-                        CHECK(valuesRead.size() == valuesToWrite.size());
+                        CHECK(valuesRead.size() == chunkToWrite.size());
                         for (std::size_t i = 0; i < valuesRead.size(); ++i) {
-                            CHECK(valuesRead[i] == valuesToWrite[i]);
+                            CHECK(valuesRead[i] == chunkToWrite[i]);
                         }
                         reader.close();
                     }
