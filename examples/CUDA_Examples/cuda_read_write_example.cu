@@ -8,7 +8,8 @@
  * and then written directly from GPU memory to a new file.
  *
  * Build:
- * nvcc -O3 -std=c++17 -I/usr/local/cuda/include -L/usr/local/cuda/lib64 -lcufile -lcudart -o cuda_read_write_example cuda_read_write_example.cu
+ * nvcc -O3 -std=c++17 -I/usr/local/cuda/include -L/usr/local/cuda/lib64 -lcufile -lcudart -o cuda_read_write_example
+ * cuda_read_write_example.cu
  *
  * Run:
  * ./cuda_read_write_example
@@ -18,7 +19,6 @@
  */
 
 #include "../../OO_IO/include/CUDAIO.h"
-
 
 #include <iostream>
 #include <string>
@@ -31,42 +31,42 @@ int main() {
 
     // Read genome directly into GPU memory
 
-    CUDAReader<char> reader;
+    gpuReader<char> reader;
 
     reader.open(inputFile, O_RDONLY | O_DIRECT);
+    reader.setDeviceBufferSize(1000ULL * 1024 * 1024); // 1 GB buffer size
 
-    char *gpuData = reader.readToGPU();
+    gpuWriter<char> writer(outputFile);
 
-    const long fileSize = reader.getFileSize();
+    for (std::size_t chunkIndex = 0; chunkIndex < reader.getNumChunks(); ++chunkIndex) {
+        char *gpuData = reader.readChunk(chunkIndex);
+        const std::size_t fileOffset = chunkIndex * reader.getDeviceBufferSize();
+        const std::size_t numItems = reader.getChunkSize();
 
-    const std::size_t numItems = static_cast<std::size_t>(reader.getNumItemsInFile());
+  
 
-    std::cout << "Read " << numItems << " characters into GPU memory.\n";
+        // Process genome on GPU here, if desired
 
-    // Process genome on GPU here, if desired
+        // For example:
+        //
+        // processGenome<<<blocks, threads>>>(
+        //     gpuData,
+        //     numItems
+        // );
+        //
+        // checkResult(cudaGetLastError());
+        // checkResult(cudaDeviceSynchronize());
 
-    // For example:
-    //
-    // processGenome<<<blocks, threads>>>(
-    //     gpuData,
-    //     numItems
-    // );
-    //
-    // checkResult(cudaGetLastError());
-    // checkResult(cudaDeviceSynchronize());
+        // Write the same GPU data to a new file
 
-    // Write the same GPU data to a new file
+        writer.writeChunk(gpuData, numItems, fileOffset);
 
-    CUDAWriter<char> writer(fileSize, outputFile);
+        std::cout << "Wrote " << numItems << " characters from GPU memory "
+                  << "to the output file.\n";
+    }
+    // Close writer first, after the loop
 
-    writer.writeToFile(gpuData, numItems);
-
-    std::cout << "Wrote " << numItems << " characters from GPU memory "
-              << "to the output file.\n";
-
-              // Close writer first
-
-    writer.close();
+    writer.close(); // Move the writer close here
 
     // gpuData belongs to the reader, so close the reader
     // only after the writer has finished using gpuData.

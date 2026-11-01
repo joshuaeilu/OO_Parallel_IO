@@ -1,0 +1,3 @@
+ 31-10-2026 21:12:50:169 [pid=25421 tid=25421] NOTICE  cufio-drv:1160 running in compatible mode
+ 31-10-2026 21:12:50:915 [pid=25421 tid=25421] NOTICE  cufio-drv:938 GPU deviceid: 0 ( NVIDIA GeForce RTX 4060 ) no native GDS - compat mode only
+ 31-10-2026 21:12:51:32 [pid=25421 tid=25421] ERROR  cufio-fs:79 mount option not found in mount table data device: /dev/nvme0n1p6

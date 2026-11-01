@@ -55,9 +55,9 @@ int main() {
 
     // Write GPU memory directly to storage
 
-    CUDAWriter<char> writer(static_cast<long>(numItems * sizeof(char)), outputFile);
+    gpuWriter<char> writer(outputFile);
 
-    writer.writeToFile(gpuData, numItems);
+    writer.writeChunk(gpuData, numItems, 0);
 
     std::cout << "Wrote " << numItems << " genome characters directly "
               << "from GPU memory.\n";

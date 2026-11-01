@@ -18,7 +18,7 @@
 
 int main() {
 
-    const std::string inputFile = "../../data/Felis_catus_9.dna.plain";
+    const std::string inputFile = "../../tests/files/2b-doubles.bin";
 
     // Open the genome file for reading
 
@@ -27,11 +27,12 @@ int main() {
     reader.open(inputFile, O_RDONLY | O_DIRECT);
 
     // Allocate GPU buffer for reading
-    reader.setDeviceBufferSize(1024 * 1024 * 1024 * 6ULL); // 6 GB buffer
+    reader.setDeviceBufferSize(1024 * 1024 * 1024 * 10ULL); // 6 GB buffer
 
     const std::size_t numChunks = reader.getNumChunks();
     for (int i = 0; i < numChunks; ++i) {
         char *gpuData = reader.readChunk(i);
+        std::cout << "Read chunk " << i << " into GPU memory." << std::endl << "Chunk size: " << reader.getChunkSize() << " bytes." << std::endl;
 
         
     }

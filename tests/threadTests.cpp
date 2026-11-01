@@ -747,8 +747,6 @@ TEST_CASE_TEMPLATE("OpenMP file content tests", Type, double, int, char) {
                 expectedValues.push_back(value);
             }
 
-            std::cout << "Expected value size: " << expectedValues.size() << " Item count: " << itemCount << std::endl;
-
             REQUIRE(expectedValues.size() == itemCount);
 
             // Create the barrier using the actual OpenMP team size.
